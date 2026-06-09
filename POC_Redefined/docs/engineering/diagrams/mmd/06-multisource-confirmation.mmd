@@ -1,0 +1,43 @@
+%% Multi-Source Confirmation Matrix
+%% Source: POC_Redefined/docs/engineering/CONNECTOR_CATALOG.md,
+%%         POC_Redefined/docs/COMPUTER_USE_ENDEAVOR_LOG.md
+%% Description: A flagged agent is "confirmed" when independent sources agree.
+%%              Verint's own out-of-adherence verdict + Verint's native
+%%              NOTIFICATIONS + the card shape + the LOB-chat routing each
+%%              corroborate the same finding. Agreement AND disagreement are
+%%              both logged; disagreement lowers confidence and can divert to HITL.
+%% Rendered by: mmdc (Mermaid CLI) or https://mermaid.live
+
+flowchart LR
+
+    subgraph SOURCES ["Independent corroborating sources"]
+        direction TB
+        S1["Verint OOA verdict\n(grid out-of-adherence column)"]
+        S2["Verint native NOTIFICATIONS\n(its own alert engine)"]
+        S3["Card shape match\n(sim_cards.json contract)"]
+        S4["LOB-chat routing\n(message lands in the right channel)"]
+    end
+
+    Agg{"Sources agree?"}
+    High["High confidence\n-> trust card"]
+    Low["Low / partial\n-> HITL review\n(confidence reflects disagreement)"]
+    Audit["Audit log\nrecord agreement AND disagreement"]
+
+    S1 --> Agg
+    S2 --> Agg
+    S3 --> Agg
+    S4 --> Agg
+    Agg -- "yes" --> High
+    Agg -- "no / partial" --> Low
+    High --> Audit
+    Low --> Audit
+
+    classDef src  fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef dec  fill:#fefce8,stroke:#64748b,color:#1e293b
+    classDef good fill:#f0fdf4,stroke:#16a34a,color:#14532d
+    classDef warn fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+
+    class S1,S2,S3,S4 src
+    class Agg dec
+    class High,Audit good
+    class Low warn

@@ -1,0 +1,44 @@
+{
+  "captured_at": "2026-06-03T19:22:17-08:00",
+  "source_url": "https://wfo.a87.verintcloudservices.com",
+  "view": "Zillow — All Current",
+  "lob": "Zillow",
+  "geo": "Philippines",
+  "cycle": 1,
+  "persistence_map": {},
+  "note": "Sample raw capture in the exact shape the extraction-only browser agent will emit (Tracking -> ADHERENCE -> Quick View grid). Activity names are verbatim, LOB/GEO injected from the View. Values mirror the live Avery, Sam row plus synthetic peers for demo coverage.",
+  "rows": [
+    {
+      "name": "Avery, Sam",
+      "scheduled_activity": "Zillow_Email",
+      "out_of_adherence": "0:11:07",
+      "actual_activity": "Zillow_Break 2",
+      "time_in_activity": "0:11:07",
+      "days_adherence": "78%"
+    },
+    {
+      "name": "Bennett, Robin",
+      "scheduled_activity": "Zillow_Email",
+      "out_of_adherence": "0:24:30",
+      "actual_activity": "Zillow_Lunch",
+      "time_in_activity": "0:24:30",
+      "days_adherence": "64%"
+    },
+    {
+      "name": "Carson, Dana",
+      "scheduled_activity": "Zillow_Chat",
+      "out_of_adherence": "0:02:15",
+      "actual_activity": "Zillow_Break 1",
+      "time_in_activity": "0:02:15",
+      "days_adherence": "88%"
+    },
+    {
+      "name": "Dalton, Lee",
+      "scheduled_activity": "Zillow_Email",
+      "out_of_adherence": "",
+      "actual_activity": "Zillow_Email",
+      "time_in_activity": "1:02:00",
+      "days_adherence": "99%"
+    }
+  ]
+}

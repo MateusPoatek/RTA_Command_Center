@@ -1,0 +1,98 @@
+# macOS and editor metadata
+.DS_Store
+**/.DS_Store
+.~lock.*#
+
+# Python generated files
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+
+# Node / Vite generated files
+node_modules/
+dist/
+.vite/
+*.tsbuildinfo
+POC/04_demo_ui/command-center-demo/node_modules/
+POC/04_demo_ui/command-center-demo/dist/
+POC/04_demo_ui/command-center-demo/node_modules/.tmp/
+POC/04_demo_ui/command-center-demo/node_modules/.vite/
+
+# Local generated outputs and temporary exports
+output/
+tmp/
+temp/
+*.log
+
+# Secrets — never commit. Keep only the .example templates.
+.env
+.env.local
+.env.*
+!.env.example
+!.env.*.example
+
+# Raw capture artifacts containing employee PII (transient dev scratch — see
+# DATA_GOVERNANCE_AND_MULTITENANCY.md: raw bodies stay local + transient).
+runs/
+**/runs/
+
+# Real client data / screenshots (employee names, hire dates, faces — PII).
+CIBC_Sample_Attendance_Data_Verint/
+**/CIBC_Sample_Attendance_Data_Verint/
+Screen_Samples_Verint/
+**/Screen_Samples_Verint/
+
+# Meeting transcripts / notes — ANY format (contain employee names + emails).
+# (slashless patterns match in every directory, incl. repo root)
+*Notes by Gemini*
+WFM Transformation Progress Sync*
+Project Detox*
+
+# Sensitive business data: headcount / roles / org.
+*Roles and HC*
+
+# Client-named confidential process guides.
+Daily Attendance Report*CIBC*
+
+# Raw recordings & large media (employee faces/voices/screens = PII; also
+# bloats git history permanently). Keep these out of source control.
+*.mp4
+*.mov
+*.m4a
+*.wav
+*.mp3
+Archive/raw_recordings_and_transcripts/
+**/raw_recordings_and_transcripts/
+
+# Local backup files used for manual reversibility during the POC.
+*.bak
+
+# ── First-commit scope: CODE + DOCS ONLY ──
+# Exclude CIBC client source materials and office-doc binaries (kept locally,
+# not in source control). A private repo can re-include these deliberately later.
+Archive/
+*.docx
+*.xlsx
+*.zip
+*.pptx
+*.ppt
+# Raw Verint/Avaya screenshots — show real agent names/statuses (PII).
+**/verint-screenshots/
+
+# ── First-commit scope (decided 2026-06-09): keep ONLY the sanitized active
+# app + docs = POC_Redefined/ + top-level README/HANDOFF. The POC/ legacy tree
+# (evidence pack, raw OCR dumps, older command-center-demo duplicate,
+# simulation snapshots, plan/board docs), the May demo, the pipeline scratch,
+# top-level docs/, and meeting transcripts contain UN-sanitized real employee
+# PII and are excluded. Re-include deliberately later after sanitization.
+/POC/
+/CIBC_RTA_Demo_May/
+/pipeline/
+/docs/
+/.cursor/
+/.claude/
+/entities.json
+/mempalace.yaml
+*Transcript.md

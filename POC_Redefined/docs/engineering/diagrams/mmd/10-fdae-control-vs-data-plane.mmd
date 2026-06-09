@@ -1,0 +1,58 @@
+%% FDAE Configuration Layer — Control Plane vs Data Plane
+%% Source: POC_Redefined/docs/engineering/FDAE_CONFIGURATION_LAYER.md
+%% Description: The FDAE configures a client through the CONTROL PLANE (tenant
+%%              manifest + connector registry + preflight + promotion). A
+%%              validated, promoted manifest deterministically wires the DATA
+%%              PLANE (the running adapters/core/dispatch in the immutable image).
+%%              This is a control plane + low-code configurator, NOT CI/CD:
+%%              the image never changes here; only configuration does.
+%% Rendered by: mmdc (Mermaid CLI) or https://mermaid.live
+
+flowchart TB
+
+    FDAE(["FDAE (admin)"])
+
+    subgraph CP ["CONTROL PLANE  (config, not code)"]
+        direction TB
+        Console["FDAE Console (low-code)\npick tier · bind seams · select capture/fallback ·\nselect dispatch + LOB map · set thresholds"]
+        Registry["Connector Registry\navailable adapters + config schemas + capability flags"]
+        Manifest["Tenant Manifest (versioned)\nidentity · seams · capture[] · dispatch · rules ·\nidentity-mapping · governance"]
+        Preflight["Connection Preflight + Health\nnon-mutating reachability + credential checks"]
+        Promote{"Validate -> Promote\ndev -> staging -> prod"}
+        Console --> Manifest
+        Registry -. "validates" .-> Manifest
+        Manifest --> Preflight
+        Preflight --> Promote
+    end
+
+    subgraph DP ["DATA PLANE  (the immutable OCI image — config-driven)"]
+        direction TB
+        Boot["Boot / reload:\nread active manifest -> deterministically wire"]
+        Cap["Capture chain\n(in declared order = fallback chain)"]
+        Core["Rules Core (unchanged)"]
+        Dis["Dispatch adapters\n(+ RPA as sole write channel)"]
+        Boot --> Cap --> Core --> Dis
+    end
+
+    Vault["Secret Vault\n(credentialRefs resolve here — never inline)"]
+
+    FDAE --> Console
+    Promote --> |"publish immutable manifest version"| Boot
+    Manifest -. "credentialRef ->" .-> Vault
+    Boot -. "binds" .-> Vault
+    Promote -. "rollback = re-activate last-good version" .-> Boot
+
+    NotCI["NOT CI/CD:\ncode changes ship via CI/CD to ALL tenants;\nconfig changes ship via this control plane to ONE tenant.\nControl plane may TRIGGER a CD deploy only if imageTag changes."]
+    NotCI -. "distinction" .-> CP
+
+    classDef actor fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
+    classDef cp    fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef dp    fill:#fefce8,stroke:#64748b,color:#1e293b
+    classDef vault fill:#f0fdf4,stroke:#16a34a,color:#14532d
+    classDef note  fill:#f8fafc,stroke:#94a3b8,stroke-dasharray:4 3,color:#334155
+
+    class FDAE actor
+    class Console,Registry,Manifest,Preflight,Promote cp
+    class Boot,Cap,Core,Dis dp
+    class Vault vault
+    class NotCI note

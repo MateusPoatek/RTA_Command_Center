@@ -1,0 +1,36 @@
+{
+  "manifest_version": 3,
+  "name": "RTA Live Bridge — Verint → Command Center",
+  "version": "0.1.0",
+  "description": "Reads Verint's own schedule/adherence API in the RTA's browser and feeds the RTA Command Center live. No connectors, no Citrix, no GScripts.",
+  "permissions": ["storage"],
+  "host_permissions": [
+    "*://*.verintcloudservices.com/*",
+    "http://localhost:5173/*"
+  ],
+  "background": { "service_worker": "background.js" },
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "RTA Live Bridge"
+  },
+  "content_scripts": [
+    {
+      "matches": ["*://*.verintcloudservices.com/*"],
+      "js": ["inject.js"],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": ["*://*.verintcloudservices.com/*"],
+      "js": ["content_verint.js"],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    },
+    {
+      "matches": ["http://localhost:5173/*"],
+      "js": ["content_cc.js"],
+      "run_at": "document_idle",
+      "world": "ISOLATED"
+    }
+  ]
+}

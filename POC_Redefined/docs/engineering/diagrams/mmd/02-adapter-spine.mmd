@@ -1,0 +1,65 @@
+%% RTA Automation — The Adapter Spine
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md,
+%%         POC_Redefined/docs/CAPTURE_AND_DISPATCH_ADAPTERS.md
+%% Description: The architectural invariant. Any capture adapter emits the same
+%%              normalized AgentRow; the rules core is adapter-blind and never
+%%              changes per adapter; any dispatch adapter consumes the same
+%%              CommandCard. Swapping capture or dispatch changes nothing in the core.
+%% Rendered by: mmdc (Mermaid CLI) or https://mermaid.live
+
+flowchart LR
+
+    subgraph CAP ["CAPTURE  (swappable — environment decides)"]
+        direction TB
+        A1["Browser Extension"]
+        A2["Verint REST (Track B)"]
+        A3["Vision / OCR (Track A)"]
+        A4["netcap"]
+        A5["File Export"]
+    end
+
+    Row["normalized snapshot\nAgentRow[]\n(agent_id · name · lob[from config] ·\ngeo · status · scheduled · duration_s · adherence%)"]
+
+    subgraph CORE ["STABLE RULES CORE  (adapter-blind · 44 tests · never changes)"]
+        direction TB
+        N["verint_normalize"]
+        T["verint_triage\nconsumes Verint's own OOA verdict"]
+        B["card_builder"]
+        N --> T --> B
+    end
+
+    Card["CommandCard[]\n+ draft message\n(severity · confidence · rule · evidence)"]
+
+    subgraph DIS ["DISPATCH  (swappable — config decides)"]
+        direction TB
+        D1["In-app (HITL feed)"]
+        D2["Google Chat"]
+        D3["Teams"]
+        D4["ServiceNow (REST)"]
+        D5["RPA Engine (writes)"]
+        D6["Audit-only"]
+    end
+
+    A1 --> Row
+    A2 --> Row
+    A3 --> Row
+    A4 --> Row
+    A5 --> Row
+    Row --> N
+    B --> Card
+    Card --> D1
+    Card --> D2
+    Card --> D3
+    Card --> D4
+    Card --> D5
+    Card --> D6
+
+    classDef cap  fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef core fill:#fefce8,stroke:#64748b,stroke-width:2px,color:#1e293b
+    classDef dis  fill:#f1f5f9,stroke:#94a3b8,color:#1e293b
+    classDef contract fill:#ffffff,stroke:#0ea5e9,stroke-width:2px,color:#0c4a6e
+
+    class A1,A2,A3,A4,A5 cap
+    class N,T,B core
+    class D1,D2,D3,D4,D5,D6 dis
+    class Row,Card contract

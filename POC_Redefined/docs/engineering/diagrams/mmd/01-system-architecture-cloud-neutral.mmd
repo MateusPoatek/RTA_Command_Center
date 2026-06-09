@@ -1,0 +1,97 @@
+%% RTA Automation — Production System Architecture (cloud-neutral)
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md
+%%         Built on strategy decisions D1 (deploy-by-tier) and D2 (cloud-agnostic seams).
+%% Description: The production system as one container image. Swappable CAPTURE
+%%              adapters feed the stable rules core; results push to the SPA and
+%%              fan out through swappable DISPATCH adapters. Five cloud-neutral
+%%              seams (dashed boundary) are the only points that bind to a cloud.
+%%              CLOUD-NEUTRAL per POC/02_architecture/README.md — no provider names.
+%% Rendered by: mmdc (Mermaid CLI) or https://mermaid.live
+
+flowchart TB
+
+    %% ── Capture (per-environment, swappable) ─────────────────────────────
+    subgraph CAP ["Capture Adapters  (one chosen per environment)"]
+        direction LR
+        Ext["Browser Extension\nRTA Live Bridge"]
+        Rest["Verint REST\nread-only (Track B)"]
+        Vision["Vision / OCR\nin-VDI (Track A)"]
+        Netcap["netcap\nPlaywright/CDP"]
+        GScript["File Export\nGScript (batch)"]
+    end
+
+    %% ── The product image (one image, config-driven) ─────────────────────
+    subgraph IMG ["RTA Automation — single OCI image (config-driven per tenant)"]
+        direction TB
+        Gateway["API Gateway\nOIDC · MFA · RBAC · rate-limit · request validation"]
+        subgraph CORE ["Stable Rules Core (adapter-blind)"]
+            Normalize["verint_normalize"]
+            Triage["verint_triage\n(consumes Verint OOA verdict)"]
+            Builder["card_builder"]
+            Normalize --> Triage --> Builder
+        end
+        Push["Push Service\nWSS / SSE"]
+        Dispatch["Dispatch Workers\n(swappable adapters)"]
+        Control["Control Plane\ntenant manifest · registry · preflight"]
+        Builder --> Push
+        Builder --> Dispatch
+        Control -. "configures" .-> CAP
+        Control -. "configures" .-> Dispatch
+    end
+
+    %% ── SPA ──────────────────────────────────────────────────────────────
+    SPA["RTA Command Center\nReact SPA — HITL review"]
+
+    %% ── Dispatch targets ─────────────────────────────────────────────────
+    subgraph OUT ["Dispatch Targets"]
+        direction LR
+        Chat["Google Chat\nper-LOB"]
+        Teams["Microsoft Teams"]
+        SNOW["ServiceNow\nREST"]
+        RPA["RPA Engine\n(only write channel into Verint/CIBC)"]
+        Audit["Audit-only"]
+    end
+
+    %% ── The five cloud-neutral seams (D2) ────────────────────────────────
+    subgraph SEAMS ["Cloud-Neutral Seams  (the only cloud-bound interfaces — D2)"]
+        direction LR
+        Vault["Secret Vault"]
+        OpStore["Operational + Audit Store\nappend-only / WORM"]
+        IntelStore["Intelligence Store\n(per-tenant)"]
+        LLM["LLM Endpoint\nadvise / draft only"]
+        Runtime["Runtime + Gateway"]
+    end
+
+    %% ── Edges ────────────────────────────────────────────────────────────
+    Ext --> Gateway
+    Rest --> Gateway
+    Vision --> Gateway
+    Netcap --> Gateway
+    GScript --> Gateway
+    Gateway --> Normalize
+    Push --> SPA
+    SPA -- "approve (human)" --> Gateway
+    Dispatch --> Chat
+    Dispatch --> Teams
+    Dispatch --> SNOW
+    Dispatch --> RPA
+    Dispatch --> Audit
+
+    IMG -. "binds" .-> Vault
+    IMG -. "binds" .-> OpStore
+    IMG -. "binds" .-> IntelStore
+    IMG -. "binds" .-> LLM
+    IMG -. "binds" .-> Runtime
+
+    %% ── Styles ───────────────────────────────────────────────────────────
+    classDef capture  fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef core     fill:#fefce8,stroke:#64748b,color:#1e293b
+    classDef seam     fill:#f0fdf4,stroke:#16a34a,stroke-dasharray:5 3,color:#14532d
+    classDef out      fill:#f1f5f9,stroke:#94a3b8,color:#1e293b
+    classDef hitl     fill:#eef2ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3
+
+    class Ext,Rest,Vision,Netcap,GScript capture
+    class Normalize,Triage,Builder,Gateway,Push,Dispatch,Control core
+    class Vault,OpStore,IntelStore,LLM,Runtime seam
+    class Chat,Teams,SNOW,RPA,Audit out
+    class SPA hitl

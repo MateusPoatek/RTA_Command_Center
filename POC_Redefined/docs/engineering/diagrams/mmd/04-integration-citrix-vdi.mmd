@@ -1,0 +1,63 @@
+%% Integration Topology B — Citrix/VDI-limited (no read-only API granted)
+%% Source: POC_Redefined/docs/engineering/CONNECTOR_CATALOG.md,
+%%         POC_Redefined/docs/CONNECTOR_SCENARIOS.md,
+%%         POC_Redefined/docs/HARNESS_FOR_COMPUTER_USE_HOWTO.md
+%% Description: The hard CIBC case. Verint is reachable only as a Citrix pixel
+%%              stream; the browser extension does NOT work (no local DOM/fetch).
+%%              Capture must happen INSIDE the VDI (vision/OCR) and only
+%%              PII-minimized normalized rows may leave via an approved egress.
+%%              Writes go only through an RPA engine that runs inside the boundary.
+%%              Fallback order is annotated: REST (if ever granted) -> Vision -> File export.
+%% Rendered by: mmdc (Mermaid CLI) or https://mermaid.live
+
+flowchart TB
+
+    subgraph VDI ["CIBC Boundary — Citrix / VDI  (no data copy-out; pixel stream only)"]
+        direction TB
+        VerintPix["Verint UI\n(SVG Gantt — vision target)"]
+        VisionAgent["Vision/OCR Agent (Track A)\ncaptures screen IN-VDI\nstatus 100% · name 75% · LOB 0%"]
+        LOBctx["LOB injected from\ntab/filter context (NOT OCR)"]
+        Minimize["PII-minimize ->\nnormalized AgentRow[] only\n(no raw pixels leave VDI)"]
+        RPAin["RPA Engine (in-boundary)\ndeterministic writes only"]
+        VerintPix --> VisionAgent
+        LOBctx --> Minimize
+        VisionAgent --> Minimize
+    end
+
+    Egress{{"Approved egress\n(VDI-compatible agent /\nemail to TELUS address)"}}
+
+    subgraph TENANT ["Client Cloud · single-tenant, in-client-cloud"]
+        direction TB
+        Core["Rules Core\nnormalize -> triage -> card_builder"]
+        Except["Exception card\nconfidence 0.0 -> HITL\n(on parse failure)"]
+        Push["Push Service (WSS/SSE)"]
+        CC["RTA Command Center (SPA)\nHITL review"]
+        Audit["Append-only Audit Store"]
+        Core --> Push --> CC
+        Core -. "unparseable row" .-> Except --> CC
+        CC --> Audit
+    end
+
+    Minimize --> Egress
+    Egress --> |"AgentRow[] (PII-minimized)"| Core
+    CC --> |"approve (human) -> deterministic instruction"| RPAin
+    RPAin --> VerintPix
+    RPAin -. "logged" .-> Audit
+
+    %% Fallback order for this environment
+    Note["Fallback order:\n1) Verint REST (if credential granted -> collapses to Topology A)\n2) Vision/OCR in-VDI (shown)\n3) File export (emergency batch)"]
+    Note -. "applies to capture" .-> VisionAgent
+
+    classDef boundary fill:#fef2f2,stroke:#dc2626,stroke-width:2px,color:#7f1d1d
+    classDef vision   fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+    classDef core     fill:#fefce8,stroke:#64748b,color:#1e293b
+    classDef store    fill:#f0fdf4,stroke:#16a34a,color:#14532d
+    classDef hitl     fill:#eef2ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3
+    classDef note     fill:#f8fafc,stroke:#94a3b8,stroke-dasharray:4 3,color:#334155
+
+    class VerintPix,RPAin boundary
+    class VisionAgent,LOBctx,Minimize vision
+    class Core,Push,Except core
+    class Audit store
+    class CC hitl
+    class Note,Egress note
