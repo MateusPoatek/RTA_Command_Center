@@ -174,27 +174,40 @@
     return { inPct: inPct, outPct: 100 - inPct };
   }
 
+  // Normalise a Verint boolean flag — the REST API can serialise booleans as
+  // strings ("true"/"false") or 0/1, and raw truthiness would count an explicit
+  // "false" as true (inflating productive minutes). Only genuine true passes.
+  function flag(v) {
+    return v === true || v === "true" || v === 1;
+  }
+
   // Shift open/close + productive minutes from the actual worked timeline.
   // Productive is reported TWO ways (paid vs work) because the exact "productive"
   // definition is a config decision with the team (Evelyn Brooks' ask).
   function deriveShiftProductive(rec) {
     const events = (rec.actualSchedule && rec.actualSchedule.events) || [];
     if (!events.length) return null;
-    let start = null, end = null, paid = 0, work = 0;
+    // Compare by epoch (Date value), NOT lexicographically: ISO strings with
+    // mixed UTC offsets (…Z vs …-05:00) do not sort in time order as text.
+    let startT = null, endT = null, startIso = null, endIso = null, paid = 0, work = 0;
     for (const e of events) {
-      if (e.startTime && (!start || e.startTime < start)) start = e.startTime;
-      if (e.endTime && (!end || e.endTime > end)) end = e.endTime;
+      const s = e.startTime ? new Date(e.startTime).getTime() : NaN;
+      const en = e.endTime ? new Date(e.endTime).getTime() : NaN;
+      if (!Number.isNaN(s) && (startT === null || s < startT)) { startT = s; startIso = e.startTime; }
+      if (!Number.isNaN(en) && (endT === null || en > endT)) { endT = en; endIso = e.endTime; }
       const m = Number(e.durationMinutes) || 0;
-      if (e.isPaid) paid += m;
-      if (e.isWork) work += m;
+      if (flag(e.isPaid)) paid += m;
+      if (flag(e.isWork)) work += m;
     }
-    return {
-      shiftStartIso: start,
-      shiftEndIso: end,
-      shiftSpanMinutes: start && end ? Math.round(secondsBetween(start, end) / 60) : 0,
-      productivePaidMinutes: Math.round(paid),
-      productiveWorkMinutes: Math.round(work),
-    };
+    const out = { productivePaidMinutes: Math.round(paid), productiveWorkMinutes: Math.round(work) };
+    // Only emit shift open/close when BOTH bounds are valid — otherwise a
+    // missing/unparseable timestamp would render a misleading "Shift 0h 0m".
+    if (startT !== null && endT !== null && endT >= startT) {
+      out.shiftStartIso = startIso;
+      out.shiftEndIso = endIso;
+      out.shiftSpanMinutes = Math.round((endT - startT) / 60000);
+    }
+    return out;
   }
 
   // captures: { calendarFilter|calendarFilters: <obj>|[<obj>...], workResources: [<obj>...] }

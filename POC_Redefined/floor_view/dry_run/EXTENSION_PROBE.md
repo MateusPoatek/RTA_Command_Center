@@ -52,3 +52,19 @@ and evaporates on tab reload.
 - **V1 shows `no captured request yet`** → you haven't paged the calendar since the last extension reload; page once.
 - **Everything 401s** → unexpected (the whole point is that inject's context authenticates). Capture the rows and tell
   C; we'd re-examine whether `inject.js` is in the calendar's frame.
+
+## Known limitations (the probe is a one-shot validation instrument, not production)
+
+A code review (2026-06-11) surfaced these — they don't change the passed verdict but bound what it proves:
+
+- **Run with a single Verint tab open.** `requestProbe` messages every matching tab; multiple tabs each run a full
+  loop and the last result posted wins (`background.lastProbeResult` has no run-id). One tab = unambiguous.
+- **Keep the popup open until results render.** The result lives only in the MV3 service worker's memory; if the
+  worker is evicted (~30s idle) the popup can poll `null` and show a false "No result." Just re-run.
+- **The verdict is a count heuristic** (`returned == requested`), not an id-identity check. For a rigorous sign-off,
+  eyeball that V2/V3 returned the *same* ids you asked for, not just the same *count*.
+- **V2/V3 are only genuinely cross-page / cross-LOB when the index is big enough** (≥55 ids for V2's
+  `slice(0,5)+slice(50,55)`, ≥2 orgs for V3). Page the calendar enough first; the popup notes the org count. The
+  census now clears any named `employeeFilterName` so it's the whole floor, not the filtered cohort.
+- **Token freshness:** the probe replays the captured request headers (incl. the rotating `impact360authtoken`), so
+  **page the calendar once right before running** to capture a fresh token.

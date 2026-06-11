@@ -183,6 +183,12 @@
     if (!c.workResourceWorkspaceCriteria) c.workResourceWorkspaceCriteria = {};
     c.workResourceWorkspaceCriteria.useAllEmployees = true;
     c.workResourceWorkspaceCriteria.workResourceIds = [];
+    // Clear any named account filter so the census is GENUINELY the whole floor
+    // — otherwise the index (and the cross-page/cross-LOB claim of V2/V3) could
+    // be silently constrained to the filtered cohort.
+    if ("employeeFilterName" in c.workResourceWorkspaceCriteria) {
+      c.workResourceWorkspaceCriteria.employeeFilterName = null;
+    }
   }
   function orgsList() {
     return [...new Set(probeIndex.map((x) => x.org))];

@@ -180,6 +180,41 @@ test("deterministic: same input -> identical output", () => {
   assert.deepEqual(build(), build());
 });
 
+// Build a one-employee capture (census + targeted) for edge-case derivations.
+function oneEmployee(events) {
+  const census = { data: { attributes: { resourceData: [
+    { id: 9001, workResourceDetails: { id: 9001, name: { first: "Edge", last: "Case" }, organizationName: "DEMO" } },
+  ] } } };
+  const targeted = { data: { attributes: { resourceData: [
+    { id: 9001, actualSchedule: { events },
+      adherence: { violations: [{ employeeId: 9001, plannedActivityName: "Blended",
+        startTime: "2025-05-12T10:00:00Z", endTime: "2025-05-12T10:10:00Z", actualEventData: [{ label: "Break" }] }] } },
+  ] } } };
+  return RTAParse.buildCards({ calendarFilters: [census, targeted] }, { lob: "DEMO", target: 5 })[0].agent;
+}
+
+test("shift open/close uses Date value, not lexicographic ISO (mixed UTC offsets)", () => {
+  // A: 09:00Z .. 16:00-05:00 (=21:00Z);  B: 08:00-05:00 (=13:00Z) .. 20:00Z.
+  // Temporal min-start and max-end are both A; lexicographic text-sort would
+  // wrongly pick B for both. Also: string "false" flags must not count.
+  const a = oneEmployee([
+    { activityId: 1, startTime: "2025-05-12T09:00:00Z", endTime: "2025-05-12T16:00:00-05:00", durationMinutes: 100, isPaid: true, isWork: true },
+    { activityId: 2, startTime: "2025-05-12T08:00:00-05:00", endTime: "2025-05-12T20:00:00Z", durationMinutes: 50, isPaid: "false", isWork: "false" },
+  ]);
+  assert.equal(a.shiftStartIso, "2025-05-12T09:00:00Z");
+  assert.equal(a.shiftEndIso, "2025-05-12T16:00:00-05:00");
+  assert.equal(a.shiftSpanMinutes, 720); // 09:00Z -> 21:00Z = 12h
+  assert.equal(a.productivePaidMinutes, 100); // the "false" string excluded
+  assert.equal(a.productiveWorkMinutes, 100);
+});
+
+test("events without timestamps -> productive set, shift fields omitted (no 0h0m)", () => {
+  const a = oneEmployee([{ activityId: 1, durationMinutes: 120, isPaid: true, isWork: true }]);
+  assert.equal(a.productivePaidMinutes, 120);
+  assert.equal(a.shiftStartIso, undefined);
+  assert.equal(a.shiftSpanMinutes, undefined, "no misleading 0h 0m when bounds absent");
+});
+
 test("empty / malformed captures don't throw", () => {
   assert.deepEqual(RTAParse.buildCards({ calendarFilters: [] }, { lob: "DEMO" }), []);
   assert.deepEqual(RTAParse.buildCards({}, {}), []);
