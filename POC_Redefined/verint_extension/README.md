@@ -77,8 +77,21 @@ the extension or Verint.
 - **Badge stuck at 0:** open the Verint calendar fresh; the capture fires on the
   API call, not on a cached view.
 
+## Tests
+
+`parse.js` is the live data path (it runs in the RTA's browser). Golden tests
+cover the card contract + the adherence%/shift/productive derivations + the
+census↔targeted field-merge + the filters/variety-cap, against a **synthetic**
+fixture (no real employee data):
+
+```
+node --test verint_extension/parse.test.js     # from POC_Redefined/
+```
+
 ## Note
 
 The JS parser (`parse.js`) mirrors the Python pipeline
 (`verint_calendar_parse.py` + `card_builder.py`). For production these should be
-unified into one source of truth.
+unified into one source of truth — note the 2026-06-11 adherence%/shift/
+productive derivations currently live only in `parse.js` (see
+`floor_view/docs/VERINT_EXTRACTION_CAPABILITIES.md` §4b).
