@@ -21,6 +21,7 @@ let lastSyncedAt = null;          // ISO ts of the last capture (observability)
 let captureLog = [];              // metadata only: [{ ts, count }] — no PII
 let captureFrequencySeconds = 0;  // hub frequency; also drives the heartbeat alarm
 let lastProbeResult = null;       // Floor-View gate probe result (ids/counts only, no PII)
+let autoPush = false;             // false = accumulate while paging, push on demand; true = push every capture
 
 // ---- persistence: survive SW eviction without disk PII --------------------
 // chrome.storage.session is in-memory (RAM), cleared on browser close. We store
@@ -30,7 +31,7 @@ const STATE_KEY = "rtaState";
 const HEARTBEAT = "rta-heartbeat";
 
 function snapshot() {
-  return { latestCards, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult };
+  return { latestCards, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult, autoPush };
 }
 function persist() {
   try {
@@ -51,6 +52,7 @@ function hydrate() {
           captureLog = s.captureLog || [];
           captureFrequencySeconds = s.captureFrequencySeconds || 0;
           lastProbeResult = s.lastProbeResult || null;
+          autoPush = !!s.autoPush;
           // restore the toolbar badge after a cold wake
           try {
             chrome.action.setBadgeText({ text: latestCards.length ? String(latestCards.length) : "" });
@@ -132,17 +134,24 @@ function rebuild() {
   try {
     latestCards = self.RTAParse.buildCards(
       { calendarFilters: captures.calendarFilters, workResources: captures.workResources },
-      { lob: "EPIC", target: 12 }
+      // High soft cap so the badge reflects the REAL staged count as the RTA
+      // pages (the old target:12 made it look frozen at 12). parse.js still caps
+      // ≤2 cards/agent to keep it meaningful.
+      { lob: "EPIC", target: 200 }
     );
   } catch (e) {
     latestCards = [];
   }
+  // Badge always reflects the live staged count — visible on the toolbar even
+  // while the popup is closed (it closes the moment you click the page).
   chrome.action.setBadgeText({ text: latestCards.length ? String(latestCards.length) : "" });
   chrome.action.setBadgeBackgroundColor({ color: "#c0392b" });
   lastSyncedAt = new Date().toISOString();
   captureLog.unshift({ ts: lastSyncedAt, count: latestCards.length });
   captureLog = captureLog.slice(0, 20); // keep the last 20 captures (metadata only)
-  pushToCommandCenter();
+  // Only auto-stream to the Command Center when the RTA opted in. By default we
+  // ACCUMULATE while paging and push the whole load once (push-now / trigger).
+  if (autoPush) pushToCommandCenter();
   persist(); // survive a worker eviction
 }
 
@@ -170,6 +179,7 @@ function handleMessage(msg, sendResponse) {
       captured: captures.calendarFilters.length,
       lastSyncedAt: lastSyncedAt,
       captureLog: captureLog,
+      autoPush: autoPush,
     });
   } else if (msg.type === "push-now") {
     pushToCommandCenter();
@@ -192,6 +202,11 @@ function handleMessage(msg, sendResponse) {
     // no response needed
   } else if (msg.type === "get-probe-result") {
     sendResponse(lastProbeResult); // null until a run completes
+  } else if (msg.type === "set-autopush") {
+    autoPush = !!msg.on;
+    persist();
+    if (autoPush) pushToCommandCenter(); // flush the staged load immediately on enable
+    sendResponse({ ok: true, autoPush: autoPush });
   } else if (msg.type === "set-frequency") {
     captureFrequencySeconds = Number(msg.seconds) || 0;
     persist();

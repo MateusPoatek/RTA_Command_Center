@@ -2,10 +2,12 @@
 const countEl = document.getElementById("count");
 const listEl = document.getElementById("list");
 const pushBtn = document.getElementById("push");
+const autopushEl = document.getElementById("autopush");
 
 function render(cards) {
   countEl.textContent = String(cards.length);
   pushBtn.disabled = cards.length === 0;
+  pushBtn.textContent = cards.length ? `Push ${cards.length} → Command Center` : "Push to Command Center";
   listEl.innerHTML = "";
   for (const c of cards.slice(0, 12)) {
     const li = document.createElement("li");
@@ -49,11 +51,17 @@ function refreshState() {
   chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
     if (chrome.runtime.lastError) return;
     render((resp && resp.cards) || []);
+    if (autopushEl) autopushEl.checked = !!(resp && resp.autoPush);
     hbLastSynced = (resp && resp.lastSyncedAt) || null;
     hbCount = (resp && resp.captureLog && resp.captureLog.length) || 0;
     paintHeartbeat();
   });
 }
+
+// Accumulate-then-push vs auto-push-every-page (persisted in the background).
+autopushEl.addEventListener("change", () => {
+  chrome.runtime.sendMessage({ type: "set-autopush", on: autopushEl.checked }, () => void chrome.runtime.lastError);
+});
 
 refreshState(); // initial paint
 setInterval(paintHeartbeat, 1000); // tick "Ns ago" every second
@@ -63,7 +71,7 @@ pushBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "push-now" }, (resp) => {
     if (chrome.runtime.lastError) return;
     pushBtn.textContent = resp && resp.count ? `Pushed ${resp.count} cards ✓` : "No cards yet";
-    setTimeout(() => (pushBtn.textContent = "Push to Command Center"), 1800);
+    setTimeout(refreshState, 1800); // restore the "Push N →" label with the live count
   });
 });
 
