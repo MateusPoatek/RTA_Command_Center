@@ -238,6 +238,19 @@ function App() {
     setLastSynced(syncedAt ?? new Date().toISOString());
   });
 
+  // Heartbeat: tick once a second so the banner shows a LIVING "synced Ns ago"
+  // that resets on each push and visibly goes quiet if pushes stop — the bridge
+  // isn't truly "LIVE" forever once it connected.
+  const [heartbeatNow, setHeartbeatNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!liveBridgeActive) return;
+    const id = setInterval(() => setHeartbeatNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [liveBridgeActive]);
+  const lastSyncAgoSec =
+    lastSynced != null ? Math.max(0, Math.round((heartbeatNow - Date.parse(lastSynced)) / 1000)) : null;
+  const liveFresh = lastSyncAgoSec != null && lastSyncAgoSec < 90; // heartbeat alarm is ~1 min
+
   // --- Capture Data hub: trigger logic (auto on frequency + manual override) ---
   const postToExtension = useCallback((kind: string, extra: Record<string, unknown> = {}) => {
     window.postMessage({ __rtaLiveBridge: true, kind, ...extra }, window.location.origin);
@@ -497,7 +510,7 @@ function App() {
         <div
           data-testid="live-bridge-banner"
           style={{
-            background: "#c0392b",
+            background: liveFresh ? "#c0392b" : "#6b7280",
             color: "#fff",
             padding: "6px 16px",
             fontSize: 13,
@@ -515,22 +528,27 @@ function App() {
               borderRadius: "50%",
               background: "#fff",
               display: "inline-block",
-              animation: "rtaPulse 1.6s ease-in-out infinite",
+              opacity: liveFresh ? 1 : 0.5,
+              animation: liveFresh ? "rtaPulse 1.6s ease-in-out infinite" : "none",
             }}
           />
-          <span>LIVE — captured from Verint via the RTA Live Bridge extension (evidence-backed)</span>
+          <span>
+            {liveFresh
+              ? "LIVE — captured from Verint via the RTA Live Bridge extension (evidence-backed)"
+              : "IDLE — bridge connected, no fresh capture (page the Verint calendar to resume)"}
+          </span>
           {lastSynced && (
             <span
-              key={lastSynced}
               data-testid="live-bridge-synced"
-              style={{
-                marginLeft: "auto",
-                fontWeight: 400,
-                fontSize: 12,
-                animation: "rtaPulse 0.6s ease-in-out",
-              }}
+              style={{ marginLeft: "auto", fontWeight: 400, fontSize: 12 }}
             >
-              last synced {new Date(lastSynced).toLocaleTimeString()}
+              ♥ synced{" "}
+              {lastSyncAgoSec == null
+                ? "—"
+                : lastSyncAgoSec < 60
+                ? `${lastSyncAgoSec}s ago`
+                : `${Math.floor(lastSyncAgoSec / 60)}m ${lastSyncAgoSec % 60}s ago`}{" "}
+              · {new Date(lastSynced).toLocaleTimeString()}
             </span>
           )}
         </div>
