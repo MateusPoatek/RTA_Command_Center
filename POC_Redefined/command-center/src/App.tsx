@@ -67,6 +67,7 @@ import { CommandBar }         from "./components/CommandBar";
 import { ShiftStartModal }    from "./components/ShiftStartModal";
 import { HealthStrip }        from "./components/HealthStrip";
 import { PriorityFeed }       from "./components/PriorityFeed";
+import { FloorView }          from "./components/FloorView";
 import { ProcessView }        from "./components/ProcessView";
 import { LearningStrip }      from "./components/LearningStrip";
 import { AgentActivityTicker } from "./components/AgentActivityTicker";
@@ -232,6 +233,8 @@ function App() {
   // and flips on a "LIVE" banner so it's obvious the data is real.
   const [liveBridgeActive, setLiveBridgeActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  // Which surface fills the left panel: the priority feed, or the spatial Floor View.
+  const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
   useExtensionBridge((liveCards, syncedAt) => {
     setCards(liveCards);
     setLiveBridgeActive(true);
@@ -565,14 +568,45 @@ function App() {
 
       <div className="workspace">
         <div className="workspace__left">
-          <PriorityFeed
-            cards={cards}
-            newCardIds={newCardIds}
-            focusedCardId={focusedCardId}
-            onAction={(action, cardId) => runCardAction(action, cardId)}
-            onFocus={(cardId) => setFocusedCardId(cardId)}
-            onShowBoard={() => {/* future: full kanban toggle */}}
-          />
+          <div className="left-view-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainView === "priority-feed"}
+              className={`lvt-btn${mainView === "priority-feed" ? " lvt-btn--active" : ""}`}
+              onClick={() => setMainView("priority-feed")}
+            >
+              Priority Feed
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainView === "floor"}
+              className={`lvt-btn${mainView === "floor" ? " lvt-btn--active" : ""}`}
+              onClick={() => setMainView("floor")}
+            >
+              Floor View
+            </button>
+          </div>
+          {mainView === "floor" ? (
+            <FloorView
+              cards={cards}
+              lobData={lobHealth}
+              onAgentClick={(cardId) => {
+                setFocusedCardId(cardId); // promote the card in the feed (radar finds, card resolves)
+                setMainView("priority-feed");
+              }}
+            />
+          ) : (
+            <PriorityFeed
+              cards={cards}
+              newCardIds={newCardIds}
+              focusedCardId={focusedCardId}
+              onAction={(action, cardId) => runCardAction(action, cardId)}
+              onFocus={(cardId) => setFocusedCardId(cardId)}
+              onShowBoard={() => {/* future: full kanban toggle */}}
+            />
+          )}
         </div>
 
         <div className="workspace__right">
