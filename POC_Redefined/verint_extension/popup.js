@@ -18,19 +18,46 @@ function render(cards) {
   }
 }
 
-function renderSync(resp) {
+// Liveness heartbeat — mirrors the Command Center banner. While the popup is
+// open it ticks "♥ synced Ns ago" (resets on each capture) and flips to a grey
+// "idle" when the bridge goes quiet, so liveness is visible here too.
+let hbLastSynced = null;
+let hbCount = 0;
+
+function paintHeartbeat() {
   const el = document.getElementById("sync");
   if (!el) return;
-  const last = resp && resp.lastSyncedAt ? new Date(resp.lastSyncedAt).toLocaleTimeString() : "—";
-  const n = resp && resp.captureLog ? resp.captureLog.length : 0;
-  el.textContent = `last capture: ${last}  ·  ${n} capture(s) this session`;
+  if (!hbLastSynced) {
+    el.style.color = "#888";
+    el.textContent = "no capture yet — open the Verint calendar and page once";
+    return;
+  }
+  const agoSec = Math.max(0, Math.round((Date.now() - Date.parse(hbLastSynced)) / 1000));
+  const fresh = agoSec < 90; // the heartbeat alarm is ~1 min
+  const rel = agoSec < 60 ? `${agoSec}s ago` : `${Math.floor(agoSec / 60)}m ${agoSec % 60}s ago`;
+  const color = fresh ? "#16a34a" : "#9ca3af";
+  const label = fresh
+    ? `♥ synced ${rel} · ${hbCount} capture(s) this session`
+    : `idle — no fresh capture (${rel}) · page Verint to resume`;
+  el.style.color = color;
+  el.innerHTML =
+    `<span style="display:inline-block;width:7px;height:7px;border-radius:50%;background:${color};margin-right:5px"></span>` +
+    label;
 }
 
-chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
-  if (chrome.runtime.lastError) return;
-  render((resp && resp.cards) || []);
-  renderSync(resp);
-});
+function refreshState() {
+  chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
+    if (chrome.runtime.lastError) return;
+    render((resp && resp.cards) || []);
+    hbLastSynced = (resp && resp.lastSyncedAt) || null;
+    hbCount = (resp && resp.captureLog && resp.captureLog.length) || 0;
+    paintHeartbeat();
+  });
+}
+
+refreshState(); // initial paint
+setInterval(paintHeartbeat, 1000); // tick "Ns ago" every second
+setInterval(refreshState, 3000); // re-poll for fresh captures while the popup is open
 
 pushBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "push-now" }, (resp) => {
