@@ -119,23 +119,82 @@
     };
   }
 
-  // Merge resourceData across one or more calendar-filter payloads, keeping the
-  // richest entry per employee (the post-filter response has the real data; an
-  // earlier/empty one must not clobber it).
+  // Crude "richness" of a value: nested array elements + non-null leaves. Used
+  // to pick the more-informative value when merging keys across payloads.
+  function signal(v) {
+    if (v == null) return 0;
+    if (Array.isArray(v)) return v.reduce(function (n, x) { return n + 1 + signal(x); }, 0);
+    if (typeof v === "object") {
+      var n = 0;
+      for (var k in v) n += signal(v[k]);
+      return n;
+    }
+    return 1;
+  }
+
+  function sumNums(arr) {
+    return (arr || []).reduce(function (n, x) { return n + (typeof x === "number" ? x : 0); }, 0);
+  }
+
+  // FIELD-LEVEL merge per employee across all calendar-filter payloads. Verint
+  // splits a person's data across TWO response shapes: the census shape
+  // (workResourceDetails + adherenceSummary + publishedSchedule) and the
+  // targeted shape (adherence.violations + actualSchedule.events). Picking one
+  // record per id (the old behaviour) silently dropped half the data — e.g. the
+  // adherenceSummary we need for adherence %. So we UNION keys per id, keeping
+  // the richer value for each.
   function mergeResourceData(calendarFilters) {
     const byId = {};
     for (const cf of calendarFilters) {
       const rd = (cf && cf.data && cf.data.attributes && cf.data.attributes.resourceData) || [];
       for (const r of rd) {
         const id = Number(r.id);
-        const score =
-          ((r.adherence && r.adherence.violations) || []).length +
-          ((r.actualSchedule && r.actualSchedule.events) || []).length;
-        const prev = byId[id];
-        if (!prev || score > prev.__score) byId[id] = Object.assign({ __score: score }, r);
+        const cur = byId[id] || { id: id };
+        for (const k in r) {
+          if (k === "id") continue;
+          if (!(k in cur) || signal(r[k]) > signal(cur[k])) cur[k] = r[k];
+        }
+        byId[id] = cur;
       }
     }
     return Object.values(byId);
+  }
+
+  // adherence % from adherenceSummary: in% = (published − violation) / published.
+  // Returns null when there's no published schedule (e.g. day off) so callers
+  // can fall back instead of showing a misleading 0%.
+  function deriveAdherence(rec) {
+    const a = rec.adherenceSummary;
+    if (!a) return null;
+    const pub = sumNums(a.publishedMinutesPerInterval);
+    if (pub <= 0) return null;
+    const vio = sumNums(a.violationMinutesPerInterval);
+    let inPct = Math.round(((pub - vio) / pub) * 100);
+    inPct = Math.max(0, Math.min(100, inPct));
+    return { inPct: inPct, outPct: 100 - inPct };
+  }
+
+  // Shift open/close + productive minutes from the actual worked timeline.
+  // Productive is reported TWO ways (paid vs work) because the exact "productive"
+  // definition is a config decision with the team (Evelyn Brooks' ask).
+  function deriveShiftProductive(rec) {
+    const events = (rec.actualSchedule && rec.actualSchedule.events) || [];
+    if (!events.length) return null;
+    let start = null, end = null, paid = 0, work = 0;
+    for (const e of events) {
+      if (e.startTime && (!start || e.startTime < start)) start = e.startTime;
+      if (e.endTime && (!end || e.endTime > end)) end = e.endTime;
+      const m = Number(e.durationMinutes) || 0;
+      if (e.isPaid) paid += m;
+      if (e.isWork) work += m;
+    }
+    return {
+      shiftStartIso: start,
+      shiftEndIso: end,
+      shiftSpanMinutes: start && end ? Math.round(secondsBetween(start, end) / 60) : 0,
+      productivePaidMinutes: Math.round(paid),
+      productiveWorkMinutes: Math.round(work),
+    };
   }
 
   // captures: { calendarFilter|calendarFilters: <obj>|[<obj>...], workResources: [<obj>...] }
@@ -156,6 +215,9 @@
     for (const r of resourceData) {
       const eid = Number(r.id);
       const name = names[eid] || String(eid);
+      // Per-agent Verint-derived metrics (computed once per employee).
+      const adh = deriveAdherence(r);
+      const sp = deriveShiftProductive(r);
       const violations = (r.adherence && r.adherence.violations) || [];
       for (const v of violations) {
         const actual = ((v.actualEventData || [{}])[0] || {}).label;
@@ -163,6 +225,9 @@
         if (actual === v.plannedActivityName) continue; // not a real mismatch
         if ((perAgent[eid] || 0) >= 2) continue; // variety cap per agent
         const card = buildCard({ ...v, employeeId: v.employeeId || eid }, name, lob, snapshotTime);
+        // Replace the placeholder agent metrics with REAL Verint-derived values.
+        if (adh) { card.agent.adherenceInPercent = adh.inPct; card.agent.adherenceOutPercent = adh.outPct; }
+        if (sp) Object.assign(card.agent, sp);
         card.__ooa = secondsBetween(v.startTime, v.endTime); // sort key (stripped later)
         cards.push(card);
         perAgent[eid] = (perAgent[eid] || 0) + 1;

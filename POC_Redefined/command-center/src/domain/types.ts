@@ -398,6 +398,20 @@ export interface AgentProfile {
   recommendedAction: string;
   /** Preview of upcoming schedule activities (e.g. ["Break 14:00", "Lunch 15:30"]). */
   schedulePreview: string[];
+  // --- Verint-derived metrics (optional; populated on LIVE extension cards by
+  // parse.js from actualSchedule.events[] + adherenceSummary). Absent on
+  // fixtures/scenarios. See floor_view/docs/VERINT_EXTRACTION_CAPABILITIES.md. ---
+  /** Shift open (ISO) = earliest actualSchedule event start. */
+  shiftStartIso?: string;
+  /** Shift close (ISO) = latest actualSchedule event end. */
+  shiftEndIso?: string;
+  /** Shift span in minutes (close − open). */
+  shiftSpanMinutes?: number;
+  /** Productive minutes by the "paid" classification (Evelyn Brooks' ask; the
+   *  exact productive-activity definition is configurable with the team). */
+  productivePaidMinutes?: number;
+  /** Productive minutes by the stricter "work" classification. */
+  productiveWorkMinutes?: number;
 }
 
 // ---------------------------------------------------------------------------
