@@ -8,6 +8,7 @@ let latestCards = [];
 let lastSyncedAt = null;          // ISO ts of the last capture (observability)
 let captureLog = [];              // metadata only: [{ ts, count }] — no PII
 let captureFrequencySeconds = 0;  // hub frequency (page drives the timer in Phase A)
+let lastProbeResult = null;       // Floor-View gate probe result (ids/counts only, no PII)
 
 function classify(url) {
   if (url.includes("/api/wfm/main/v2/calendar-filter")) return "cf";
@@ -20,6 +21,15 @@ function requestRefetch() {
   chrome.tabs.query({ url: "*://*.verintcloudservices.com/*" }, (tabs) => {
     for (const t of tabs) {
       chrome.tabs.sendMessage(t.id, { type: "refetch" }, () => void chrome.runtime.lastError);
+    }
+  });
+}
+
+// Ask the Verint tab(s) to run the read-only Floor-View gate probe (inject.js).
+function requestProbe() {
+  chrome.tabs.query({ url: "*://*.verintcloudservices.com/*" }, (tabs) => {
+    for (const t of tabs) {
+      chrome.tabs.sendMessage(t.id, { type: "probe" }, () => void chrome.runtime.lastError);
     }
   });
 }
@@ -80,6 +90,17 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
     pushToCommandCenter();
     if (typeof requestRefetch === "function") requestRefetch();
     sendResponse({ ok: true, count: latestCards.length });
+  } else if (msg.type === "run-probe") {
+    // Popup "Run gate probe" → tell the Verint tab(s) to run the probe.
+    lastProbeResult = null; // clear stale result so the popup polls for the new run
+    requestProbe();
+    sendResponse({ ok: true });
+  } else if (msg.type === "probe-result") {
+    // inject.js (via content_verint) returns the name-free rows/meta.
+    lastProbeResult = { rows: msg.rows || [], meta: msg.meta || null, ts: new Date().toISOString() };
+    // no response needed
+  } else if (msg.type === "get-probe-result") {
+    sendResponse(lastProbeResult); // null until a run completes
   } else if (msg.type === "set-frequency") {
     captureFrequencySeconds = Number(msg.seconds) || 0; // stored; page drives the timer in Phase A
     sendResponse({ ok: true, seconds: captureFrequencySeconds });
