@@ -33,6 +33,13 @@ temp/
 !.env.example
 !.env.*.example
 
+# Cloud service-account keys / GTT credentials — NEVER commit (contain private keys).
+GTT_JSON/
+**/GTT_JSON/
+ti-is-prod-*.json
+**/*service_account*.json
+**/*-gserviceaccount*.json
+
 # Raw capture artifacts containing employee PII (transient dev scratch — see
 # DATA_GOVERNANCE_AND_MULTITENANCY.md: raw bodies stay local + transient).
 runs/
