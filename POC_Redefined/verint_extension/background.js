@@ -17,6 +17,7 @@ importScripts("parse.js");
 
 const captures = { calendarFilters: [], workResources: [] }; // transient (raw bodies, PII) — NOT persisted
 let latestCards = [];
+let latestRoster = [];            // all agents in Verint fixture format (for reconciliation)
 let lastSyncedAt = null;          // ISO ts of the last capture (observability)
 let captureLog = [];              // metadata only: [{ ts, count }] — no PII
 let captureFrequencySeconds = 0;  // hub frequency; also drives the heartbeat alarm
@@ -31,7 +32,7 @@ const STATE_KEY = "rtaState";
 const HEARTBEAT = "rta-heartbeat";
 
 function snapshot() {
-  return { latestCards, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult, autoPush };
+  return { latestCards, latestRoster, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult, autoPush };
 }
 function persist() {
   try {
@@ -48,6 +49,7 @@ function hydrate() {
         const s = o && o[STATE_KEY];
         if (s) {
           latestCards = s.latestCards || [];
+          latestRoster = s.latestRoster || [];
           lastSyncedAt = s.lastSyncedAt || null;
           captureLog = s.captureLog || [];
           captureFrequencySeconds = s.captureFrequencySeconds || 0;
@@ -123,7 +125,7 @@ function pushToCommandCenter() {
     for (const t of tabs) {
       chrome.tabs.sendMessage(
         t.id,
-        { type: "cards", cards: latestCards, syncedAt: lastSyncedAt },
+        { type: "cards", cards: latestCards, roster: latestRoster, syncedAt: lastSyncedAt },
         () => void chrome.runtime.lastError
       );
     }
@@ -131,16 +133,16 @@ function pushToCommandCenter() {
 }
 
 function rebuild() {
+  const captureData = { calendarFilters: captures.calendarFilters, workResources: captures.workResources };
   try {
-    latestCards = self.RTAParse.buildCards(
-      { calendarFilters: captures.calendarFilters, workResources: captures.workResources },
-      // High soft cap so the badge reflects the REAL staged count as the RTA
-      // pages (the old target:12 made it look frozen at 12). parse.js still caps
-      // ≤2 cards/agent to keep it meaningful.
-      { lob: "EPIC", target: 200 }
-    );
+    latestCards = self.RTAParse.buildCards(captureData, { lob: "EPIC", target: 200 });
   } catch (e) {
     latestCards = [];
+  }
+  try {
+    latestRoster = self.RTAParse.extractRoster(captureData, { lob: "EPIC" });
+  } catch (e) {
+    latestRoster = [];
   }
   // Badge always reflects the live staged count — visible on the toolbar even
   // while the popup is closed (it closes the moment you click the page).
@@ -176,6 +178,7 @@ function handleMessage(msg, sendResponse) {
   } else if (msg.type === "get-cards") {
     sendResponse({
       cards: latestCards,
+      roster: latestRoster,
       captured: captures.calendarFilters.length,
       lastSyncedAt: lastSyncedAt,
       captureLog: captureLog,

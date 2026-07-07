@@ -264,7 +264,87 @@
     return out;
   }
 
-  const api = { buildCards, buildCard, severityFromOoa, fmtDuration, slug, namesFromWorkResources };
+  // Format seconds as "H:MM:SS" for Verint fixture compatibility.
+  function fmtHms(seconds) {
+    const s = Math.abs(Math.round(seconds));
+    const h = Math.floor(s / 3600);
+    const m = Math.floor((s % 3600) / 60);
+    const sec = s % 60;
+    return `${h}:${String(m).padStart(2, "0")}:${String(sec).padStart(2, "0")}`;
+  }
+
+  // Extract ALL agents from captured payloads in Verint fixture row format.
+  // Unlike buildCards (OOA-violations only), this covers every agent Verint
+  // reported — whether in adherence or not — so the reconciler can join on name.
+  //
+  // Output rows match verint_normalize.py's RAW_KEYS contract:
+  //   { name, scheduled_activity, out_of_adherence, actual_activity,
+  //     time_in_activity, days_adherence }
+  function extractRoster(captures, opts) {
+    opts = opts || {};
+    const lob = opts.lob || "EPIC";
+
+    const names = namesFromWorkResources(captures.workResources || []);
+    let cfs = captures.calendarFilters || captures.calendarFilter || [];
+    if (!Array.isArray(cfs)) cfs = [cfs];
+    const resourceData = mergeResourceData(cfs);
+
+    const rows = [];
+    for (const r of resourceData) {
+      const eid = Number(r.id);
+      const name = names[eid];
+      if (!name) continue; // no name resolution -> skip (can't join without it)
+
+      const adh = deriveAdherence(r);
+      const adhPct = adh ? `${adh.inPct}%` : "";
+
+      // Find the worst (longest) real OOA violation for this agent.
+      const violations = (r.adherence && r.adherence.violations) || [];
+      const realViolations = violations.filter((v) => {
+        const act = ((v.actualEventData || [{}])[0] || {}).label;
+        return !NO_ACTUAL.has(act) && act !== v.plannedActivityName;
+      });
+      realViolations.sort((a, b) =>
+        secondsBetween(b.startTime, b.endTime) - secondsBetween(a.startTime, a.endTime)
+      );
+
+      let actualActivity = "";
+      let scheduledActivity = "";
+      let ooaSecs = 0;
+
+      if (realViolations.length > 0) {
+        const v = realViolations[0];
+        actualActivity = ((v.actualEventData || [{}])[0] || {}).label || "";
+        scheduledActivity = v.plannedActivityName || "";
+        ooaSecs = secondsBetween(v.startTime, v.endTime);
+      } else {
+        // In-adherence agent: derive current activity from actual timeline.
+        const events = (r.actualSchedule && r.actualSchedule.events) || [];
+        if (events.length > 0) {
+          const last = events[events.length - 1];
+          actualActivity = last.label || last.activityName || "In Schedule";
+          scheduledActivity = last.plannedActivityName || "In Schedule";
+        } else {
+          actualActivity = "In Schedule";
+          scheduledActivity = "In Schedule";
+        }
+        ooaSecs = 0;
+      }
+
+      rows.push({
+        name: name,
+        scheduled_activity: scheduledActivity,
+        out_of_adherence: fmtHms(ooaSecs),
+        actual_activity: actualActivity,
+        time_in_activity: fmtHms(ooaSecs),
+        days_adherence: adhPct,
+        lob: lob,
+      });
+    }
+    return rows;
+  }
+
+  const api = { buildCards, buildCard, extractRoster, severityFromOoa, fmtDuration, fmtHms, slug, namesFromWorkResources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.RTAParse = api;
 })(typeof self !== "undefined" ? self : this);
