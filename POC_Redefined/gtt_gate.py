@@ -50,8 +50,8 @@ def main():
     ap.add_argument("--key", default="GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json",
                     help="path to the SA key (or set GOOGLE_APPLICATION_CREDENTIALS)")
     ap.add_argument("--date", default="2026-06-03", help="single day YYYY-MM-DD")
-    ap.add_argument("--functional-area", default="FA_CIBC")
-    ap.add_argument("--sites", default="GT - Guatemala - Pradera East")
+    ap.add_argument("--functional-area", default="FA_Epic Games")
+    ap.add_argument("--sites", default="SV - Antiguo Cuscatlan - Torre Emblema")
     ap.add_argument("--tz", default="America/Toronto")
     ap.add_argument("--tz-label", default="Eastern Time (America/Toronto)")
     args = ap.parse_args()

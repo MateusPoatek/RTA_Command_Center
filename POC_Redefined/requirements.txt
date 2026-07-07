@@ -1,0 +1,5 @@
+starlette
+uvicorn
+requests
+google-auth
+rapidfuzz
