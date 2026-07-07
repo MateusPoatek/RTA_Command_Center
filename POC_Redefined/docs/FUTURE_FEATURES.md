@@ -83,3 +83,58 @@ That's enough to prototype all four features below.
   ↔ name. Worth designing once, centrally.
 - **PII/governance scales with scope:** attendance and attrition touch HR data —
   must be in the council's security/compliance track.
+
+---
+
+# Roadmap: platform directions (2026-07-07)
+
+> Bigger, cross-cutting directions beyond the four features above — captured from the
+> 2026-07-06/07 architecture discussions. Not committed scope; sequenced roughly by dependency.
+> Ties into the crawl/walk/run maturity model (`CIBC_RTA_Demo_Andrew.md`,
+> `00_crawl_walk_run_maturity.mmd`).
+
+## R1. The reconciliation portal (new product — ~next month)
+
+- **What:** a dedicated, RBAC-based portal that serves **current, reconciled** attendance +
+  adherence data — the bridge between what Telus executives/senior directors see today (GTT) and
+  the real-time picture extracted from the RTA screens (Verint), surfaced "all the way up to the
+  health of the account."
+- **Why it's new, not the Command Center:** the Command Center is the RTA-facing operational
+  surface; this portal is the **director/C-level-facing** surface with different data currency,
+  hosting, and access rules. Likely a **new product**, not a Command Center screen.
+- **Supersedes what exists today:** there is already a **Data Studio / Looker dashboard** shared
+  with CIBC Operations, refreshed **manually** after each attendance script run (see
+  `ATTENDANCE_PROCESS.md`, `NEXT_STEPS.md` "Data Studio / Looker connector"). The portal is the
+  productised, always-current successor to that manual dashboard.
+- **Requirements (from Mateus, 2026-07-07):**
+  - a **source of current data** (not a periodically-refreshed export);
+  - **integrated with the newly provisioned infrastructure** (Telus Digital GCP — see BRD AC-007);
+  - **RBAC segregation** — what an RTA sees vs. what a C-level sees, especially when the C-level
+    view is used **in front of the client** during account negotiation. Builds on existing BRD
+    auth/RBAC requirements (BR-020, BR-021).
+- **Open decision:** build net-new vs. ride the existing **Intelligent Insights** spine (which
+  already does director-level drill-down reporting). Current lean: **new product** — but revisit
+  after the Intelligent Insights access/FDI session (BRD AD-008). Tracked in
+  [[project_existing_platform]] / [[project_capture_strategy_and_portal]].
+
+## R2. Multi-vendor capture (Verint + NICE + AWS Connect)
+
+- **What:** extend the adapter-blind capture core beyond Verint to the other WFM/telephony
+  systems in the Telus portfolio — **NICE** and **AWS Connect** — so the portal reconciles across
+  vendors, not just Verint accounts.
+- **Reuse, don't rebuild:** other Telus teams have **already built capture solutions for NICE and
+  AWS Connect**; we are in contact with them. The likely path is federating their feeds into our
+  reconciliation core (BR-030 keeps the core adapter-blind), not building each from scratch —
+  consistent with the extend-vs-build stance in the BRD (Section 2) and [[project_existing_platform]].
+- **Strategic weight:** this is the addressable-market multiplier — both dominant WFM vendors
+  across the portfolio (see BRD Sections 1 and 5). Expansion scope, not Phase 1.
+
+## R3. Rollout order follows tenant ownership
+
+- **Sequencing principle:** prioritise accounts where **Telus already owns the Verint tenant**
+  (golden cluster) — server-direct capture needs only an internally-provisioned non-federated
+  service account, **no client negotiation**. These are the low-hanging fruit.
+- **Client-owned/Citrix accounts (e.g. CIBC)** come later or via the **extension relay**, since
+  server-direct there requires negotiating access into the client's infrastructure. See the
+  corrected `SERVER_SIDE_ARCHITECTURE.md` (SSO + tenant-ownership) and `RTA_EXTENSION_MASTER_BRIEF.md`
+  §5 for the two capture paths.
