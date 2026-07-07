@@ -50,7 +50,10 @@ import type {
   CommandCard,
   DataClass,
   LearningSignal,
+  ReconciliationReport,
+  ReportConfig,
 } from "./domain/types";
+import { DEFAULT_REPORT_CONFIG } from "./domain/types";
 
 // Shared
 import { formatChannel } from "./shared/channelConfig";
@@ -59,8 +62,10 @@ import { BASE_CONFIDENCE } from "./shared/constants";
 // Hooks
 import { useLiveEngine } from "./hooks/useLiveEngine";
 import { useExtensionBridge } from "./hooks/useExtensionBridge";
+import type { VerintRosterRow } from "./hooks/useExtensionBridge";
 import { useCaptureScheduler } from "./hooks/useCaptureScheduler";
 import { CaptureConfigModal, type CaptureSystem } from "./components/CaptureConfigModal";
+import { ReportConfigPanel, saveHistoryEntry } from "./components/ReportConfigPanel";
 
 // Components
 import { CommandBar }         from "./components/CommandBar";
@@ -188,6 +193,33 @@ function App() {
   // Count of cards fully accepted by the RTA (no editing needed) — shown in HealthStrip.
   const aiHandledCount = learningSignals.filter((s) => s.decision === "accepted").length;
 
+  // -- GTT × Verint reconciliation report -----------------------------------
+  const [reportPayload,    setReportPayload]    = useState<ReconciliationReport | null>(null);
+  const [reportConfigOpen, setReportConfigOpen] = useState(false);
+  const [reportConfig,     setReportConfig]     = useState<ReportConfig>(DEFAULT_REPORT_CONFIG);
+
+  // Walk back up to 3 days to find the most recent generated report.
+  const fetchLatestReport = useCallback(async () => {
+    for (let daysBack = 0; daysBack < 4; daysBack++) {
+      const d = new Date();
+      d.setDate(d.getDate() - daysBack);
+      const dateStr = d.toISOString().slice(0, 10);
+      try {
+        const r = await fetch(`/runs/reports/reconciliation_${dateStr}.json`);
+        if (r.ok) {
+          const data: ReconciliationReport = await r.json();
+          setReportPayload(data);
+          return;
+        }
+      } catch (e) {
+        console.warn('[report] fetch error:', e);
+      }
+    }
+    console.warn('[report] no report found in the last 4 days');
+  }, []);
+
+  useEffect(() => { fetchLatestReport(); }, [fetchLatestReport]);
+
   // ---------------------------------------------------------------------------
   // Autonomous mode handler — called by useLiveEngine when AI acts on a card
   // ---------------------------------------------------------------------------
@@ -233,12 +265,14 @@ function App() {
   // and flips on a "LIVE" banner so it's obvious the data is real.
   const [liveBridgeActive, setLiveBridgeActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
+  const [verintRoster, setVerintRoster] = useState<VerintRosterRow[]>([]);
   // Which surface fills the left panel: the priority feed, or the spatial Floor View.
   const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
-  useExtensionBridge((liveCards, syncedAt) => {
+  useExtensionBridge((liveCards, syncedAt, roster) => {
     setCards(liveCards);
     setLiveBridgeActive(true);
     setLastSynced(syncedAt ?? new Date().toISOString());
+    if (roster.length > 0) setVerintRoster(roster);
   });
 
   // Heartbeat: tick once a second so the banner shows a LIVING "synced Ns ago"
@@ -507,6 +541,31 @@ function App() {
         onCapture={() => setCaptureConfigOpen(true)}
         onOpenBriefing={() => setBriefingOpen(true)}
         onScenarioChange={(id) => setActiveScenarioId(id)}
+        hasReport={reportPayload !== null}
+        onGenerateReport={async () => {
+          const today = new Date().toISOString().slice(0, 10);
+          // If the local API is running and we have a Verint roster, use the full pipeline.
+          // Falls back to fetching the most recent pre-generated JSON if the API is unreachable.
+          try {
+            const res = await fetch("/api/generate-report", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                date: today,
+                functional_area: reportConfig.functionalArea,
+                sites: reportConfig.sites,
+                verint_rows: verintRoster,
+              }),
+            });
+            if (res.ok) {
+              // Report written to disk — now load it.
+              await fetchLatestReport();
+              return;
+            }
+          } catch {/* API not running — fall through to disk load */}
+          // Fallback: load the most recent pre-generated file.
+          fetchLatestReport();
+        }}
       />
 
       {liveBridgeActive && (
@@ -617,6 +676,9 @@ function App() {
             attendanceReports={activeScenario.reports.attendanceReports}
             dispatchLog={dispatchLog}
             onAction={(action, cardId) => runCardAction(action, cardId)}
+            reportPayload={reportPayload}
+            reportConfig={reportConfig}
+            onOpenReportConfig={() => setReportConfigOpen(true)}
           />
         </div>
       </div>
@@ -668,6 +730,17 @@ function App() {
         <AutoActionToast
           key={lastAutoAction.id}
           action={lastAutoAction}
+        />
+      )}
+
+      {reportConfigOpen && (
+        <ReportConfigPanel
+          defaults={reportConfig}
+          onClose={() => setReportConfigOpen(false)}
+          onConfigSave={(cfg) => {
+            setReportConfig(cfg);
+            setReportConfigOpen(false);
+          }}
         />
       )}
 

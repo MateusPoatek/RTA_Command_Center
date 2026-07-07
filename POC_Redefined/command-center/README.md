@@ -40,6 +40,28 @@ npm run dev
 
 Then open [http://localhost:5173](http://localhost:5173).
 
+This gives you the frontend-only demo (scenarios A–D). The **Report** tab (GTT reconciliation) and the **live Verint bridge** need the backend and browser extension described below — see [../docs/AMY_SETUP_GUIDE.md](../docs/AMY_SETUP_GUIDE.md) for the full step-by-step walkthrough.
+
+### Backend (GTT reconciliation reports)
+
+The Report tab calls a local Python API (`local_api.py`) that the Vite dev server proxies `/api/*` requests to on `http://127.0.0.1:5050`.
+
+```bash
+# From POC_Redefined/
+python3.12 -m venv .venv-browser
+source .venv-browser/bin/activate
+pip install -r requirements.txt
+python local_api.py
+```
+
+It also needs a GCP service-account key for the GTT API, placed at `POC_Redefined/GTT_JSON/<key-name>.json` (gitignored — request this from Maximiliano, never commit it).
+
+### Browser extension (live Verint bridge)
+
+To feed live Verint data into the Command Center instead of the demo scenarios, load `POC_Redefined/verint_extension/` as an unpacked extension in Chrome or Brave (`chrome://extensions` / `brave://extensions` → Developer mode → Load unpacked). See `verint_extension/README.md` for details.
+
+The extension, the Verint tab, and the Command Center tab (`localhost:5173`) all have to be open in the **same browser session** on your machine — the extension bridges data via `window.postMessage`, not a network call.
+
 ---
 
 ## How to run the demo

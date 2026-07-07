@@ -19,7 +19,8 @@
  *   in the body to prevent confusion with real operational records.
  */
 
-import type { AuditEvent, CommandCard } from "../domain/types";
+import * as XLSX from "xlsx";
+import type { AuditEvent, CommandCard, ReconciliationReport } from "../domain/types";
 
 // ---------------------------------------------------------------------------
 // Audit trail CSV export
@@ -88,6 +89,104 @@ export function exportShiftSummary(cards: CommandCard[]): void {
   ].join("\n");
 
   downloadTextFile("rta-shift-summary-demo.txt", summary, "text/plain");
+}
+
+// ---------------------------------------------------------------------------
+// GTT × Verint Reconciliation Report — XLSX export
+// ---------------------------------------------------------------------------
+
+/**
+ * Exports a ReconciliationReport as a two-sheet XLSX workbook:
+ *   Sheet 1 "Discrepancies" — one row per discrepancy
+ *   Sheet 2 "Intelligence"  — bullet-point intelligence summary
+ */
+export function exportReportXlsx(report: ReconciliationReport): void {
+  const wb = XLSX.utils.book_new();
+
+  // Sheet 1: discrepancies
+  const discRows = report.discrepancies.map((d) => ({
+    "Employee": d.employee,
+    "Workday ID": d.workday_id,
+    "Subgroup (GTT)": d.subgroup,
+    "LOB (Verint)": d.lob,
+    "GTT Event": d.gtt_event,
+    "Verint Status": d.verint_status,
+    "Adherence %": d.adherence_pct ?? "",
+    "OOA (sec)": d.ooa_seconds ?? "",
+    "Discrepancy Type": d.discrepancy_type,
+  }));
+  const ws1 = XLSX.utils.json_to_sheet(discRows);
+  ws1["!cols"] = [20, 14, 18, 18, 12, 20, 12, 10, 32].map((w) => ({ wch: w }));
+  XLSX.utils.book_append_sheet(wb, ws1, "Discrepancies");
+
+  // Sheet 2: intelligence bullets + summary
+  const summaryRows = [
+    { Field: "Date", Value: report.date },
+    { Field: "Functional Area", Value: report.functional_area },
+    { Field: "GTT Total", Value: report.gtt_total },
+    { Field: "Verint Total", Value: report.verint_total },
+    { Field: "Matched", Value: report.matched },
+    { Field: "Discrepancies", Value: report.discrepancy_count },
+    { Field: "Generated At", Value: report.generated_at },
+    { Field: "", Value: "" },
+    ...report.intelligence.map((bullet, i) => ({
+      Field: `Intelligence ${i + 1}`,
+      Value: bullet,
+    })),
+  ];
+  const ws2 = XLSX.utils.json_to_sheet(summaryRows);
+  ws2["!cols"] = [{ wch: 20 }, { wch: 80 }];
+  XLSX.utils.book_append_sheet(wb, ws2, "Intelligence");
+
+  XLSX.writeFile(wb, `gtt-verint-report-${report.date}.xlsx`);
+}
+
+// ---------------------------------------------------------------------------
+// GTT × Verint Reconciliation Report — PDF (browser print)
+// ---------------------------------------------------------------------------
+
+/**
+ * Triggers the browser's print dialog scoped to a specific DOM element.
+ * The element must have an id matching `elementId`.
+ * Uses @media print styles defined in the component to hide the surrounding UI.
+ */
+export function exportReportPdf(elementId: string): void {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const printWindow = window.open("", "_blank", "width=1024,height=768");
+  if (!printWindow) return;
+
+  // Grab all page stylesheets so fonts/colours survive the new window
+  const styles = Array.from(document.styleSheets)
+    .map((ss) => {
+      try {
+        return Array.from(ss.cssRules).map((r) => r.cssText).join("\n");
+      } catch {
+        return "";
+      }
+    })
+    .join("\n");
+
+  printWindow.document.write(`<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8"/>
+<title>GTT × Verint Report ${elementId}</title>
+<style>
+  ${styles}
+  body { background: white; color: black; font-family: sans-serif; }
+  @media print { .no-print { display: none !important; } }
+</style>
+</head>
+<body>${el.innerHTML}</body>
+</html>`);
+  printWindow.document.close();
+  printWindow.focus();
+  setTimeout(() => {
+    printWindow.print();
+    printWindow.close();
+  }, 400);
 }
 
 // ---------------------------------------------------------------------------

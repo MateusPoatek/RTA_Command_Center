@@ -11,23 +11,34 @@
 import { useEffect } from "react";
 import type { CommandCard } from "../domain/types";
 
+export interface VerintRosterRow {
+  name: string;
+  scheduled_activity: string;
+  out_of_adherence: string;
+  actual_activity: string;
+  time_in_activity: string;
+  days_adherence: string;
+  lob?: string;
+}
+
 interface BridgeMessage {
   __rtaLiveBridge?: boolean;
   kind?: string;
   cards?: CommandCard[];
+  roster?: VerintRosterRow[];
   syncedAt?: string | null;
 }
 
 export function useExtensionBridge(
-  onCards: (cards: CommandCard[], syncedAt: string | null) => void,
+  onCards: (cards: CommandCard[], syncedAt: string | null, roster: VerintRosterRow[]) => void,
 ): void {
   useEffect(() => {
     function handler(e: MessageEvent) {
       if (e.source !== window) return;
       const d = e.data as BridgeMessage;
       if (!d || d.__rtaLiveBridge !== true || d.kind !== "cards") return;
-      if (Array.isArray(d.cards) && d.cards.length > 0) {
-        onCards(d.cards, d.syncedAt ?? null);
+      if (Array.isArray(d.cards)) {
+        onCards(d.cards, d.syncedAt ?? null, d.roster ?? []);
       }
     }
     window.addEventListener("message", handler);
