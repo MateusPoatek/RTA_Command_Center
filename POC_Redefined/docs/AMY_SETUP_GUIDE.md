@@ -50,6 +50,14 @@ rest of the app works fine.
 Open **http://localhost:5173** in Brave. You should see the **Shift Briefing**
 modal. This confirms the frontend works — leave this terminal running.
 
+Once you're past the briefing, look at the top of the left panel: there's a
+**Priority Feed** / **Floor View** toggle. **Floor View** is already built and
+ships with this app — it's a spatial radar of agents grouped by LOB, with
+out-of-adherence agents flaring by severity. No extra setup needed; it uses the
+same data as Priority Feed. (For the design rationale behind it, see
+[`../floor_view/README.md`](../floor_view/README.md) — that folder is docs
+only, not something you run separately.)
+
 ---
 
 ## 4. Set up the Python backend (GTT reconciliation reports)
@@ -69,16 +77,18 @@ You should see uvicorn log that it's running on `http://127.0.0.1:5050`. Leave
 this terminal running too.
 
 **GTT service-account key**: `gtt_adapter.py` needs a GCP service-account JSON
-key to call the GTT reconciliation API. This is a secret and is **not** in the
-repo (it's gitignored on purpose). Ask **Maximiliano** for a current key, and
-save it at:
+key to call the GTT reconciliation API. You should already have this — the
+production key Maximiliano gave you. It's a secret and must **never** be
+committed to the repo (the folder below is gitignored on purpose). Save it at
+exactly:
 
 ```
-POC_Redefined/GTT_JSON/<key-name>.json
+POC_Redefined/GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json
 ```
 
-Without this key, the app still runs — you just can't generate a real
-reconciliation report yet.
+Using that exact filename means `gtt_adapter.py`/`gtt_gate.py` pick it up
+automatically — no extra configuration needed. Double-check it landed inside
+`GTT_JSON/` and not somewhere `git status` would pick it up as a new file.
 
 ---
 
@@ -151,7 +161,7 @@ If this works end to end, your setup is complete.
 | Badge stuck at 0 | Open the Verint calendar fresh with a filter applied — capture fires on the live API call, not a cached view. |
 | Command Center tab doesn't update | Confirm the tab URL is exactly `http://localhost:5173` (the extension's host permission is exact) and reload it. |
 | Report tab fails / CORS error | `local_api.py` only accepts requests from `localhost:5173` / `127.0.0.1:5173` — make sure the frontend dev server is the one making the request, and that `local_api.py` is still running in its terminal. |
-| Report generation fails with a 401/403 from GTT | The service-account key is missing, expired, or in the wrong path — re-check `POC_Redefined/GTT_JSON/<key-name>.json` and ask Maximiliano for a fresh key if needed. |
+| Report generation fails with a 401/403 from GTT | The service-account key is missing or in the wrong path — re-check it's at `POC_Redefined/GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json` exactly; if it's expired, ask Maximiliano for a fresh one. |
 | `pip install -r requirements.txt` fails | Confirm you're using Python 3.12 in the venv (`python3.12 -m venv .venv-browser`), not the system Python. |
 
 For more extension-specific detail, see
