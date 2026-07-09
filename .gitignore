@@ -9,6 +9,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+.venv-browser/
+**/.venv-browser/
 
 # Node / Vite generated files
 node_modules/
