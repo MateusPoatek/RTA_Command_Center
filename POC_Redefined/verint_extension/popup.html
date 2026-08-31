@@ -30,10 +30,24 @@
 <body>
   <h1>RTA Live Bridge</h1>
   <div class="sub">Verint → RTA Command Center</div>
+  <label class="grd-field-label" style="display:block;font-size:11px;color:#444;margin-bottom:10px;">Account (LOB)
+    <select id="lob" style="width:100%;padding:6px;margin-top:3px;border:1px solid #ccc;border-radius:6px;font-size:12px;">
+      <option value="EPIC">Epic Games</option>
+      <option value="ZILLOW">Zillow</option>
+      <option value="CORELOGIC">Corelogic</option>
+    </select>
+  </label>
   <div class="stat"><span class="count" id="count">0</span><span>adherence alerts staged</span></div>
   <button id="push">Push to Command Center</button>
   <label class="toggle"><input type="checkbox" id="autopush" /> Auto-push every page <span style="color:#888">(off = accumulate, push once)</span></label>
   <div id="sync" style="color:#666;font-size:10px;margin-top:8px;"></div>
+
+  <hr />
+  <div class="probe-h" style="color:#0f766e;">Full Capture — one pass, no paging</div>
+  <button id="full-capture" style="background:#0f766e;">Full Capture</button>
+  <div id="capture-status" style="color:#666;font-size:10px;margin-top:6px;"></div>
+  <div class="hint">Pulls the whole roster + adherence detail in one automated sequence instead of paging. Keep the Verint calendar on a <b>1-day view</b> first. This is active polling against Verint — only run it against an account once cleared with the team (see ACCOUNT_ONBOARDING_PLAN.md).</div>
+
   <ul id="list"></ul>
   <div class="hint"><b>How to use:</b> 1) Open the Verint calendar &amp; apply your filter. 2) Page through — the badge on the toolbar icon climbs as alerts stage. <i>The popup closes when you click the page; that's normal — watch the badge.</i> 3) Click <b>Push</b> once to send the whole load to the Command Center (localhost:5173) and dispatch there.</div>
 

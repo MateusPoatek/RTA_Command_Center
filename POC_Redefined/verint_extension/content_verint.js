@@ -16,16 +16,24 @@ window.addEventListener("message", (e) => {
     try {
       chrome.runtime.sendMessage({ type: "probe-result", rows: d.rows, meta: d.meta });
     } catch (_) {}
+  } else if (d.kind === "capture-progress") {
+    // Full Capture progress (census/targeted phase + counters) → background.
+    try {
+      chrome.runtime.sendMessage({ type: "capture-progress", phase: d.phase, done: d.done, total: d.total });
+    } catch (_) {}
   }
 });
 
 // Background → here → inject.js (MAIN world): relay a re-fetch command (the page
-// replays the calendar-filter request in the user's session), or a "probe"
-// command (run the read-only Floor-View gate probe).
+// replays the calendar-filter request in the user's session), a "probe" command
+// (run the read-only Floor-View gate probe), or a "full-capture" command (run
+// the one-pass census + targeted capture).
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "refetch") {
     window.postMessage({ __rtaLiveBridge: true, kind: "refetch" }, window.location.origin);
   } else if (msg && msg.type === "probe") {
     window.postMessage({ __rtaLiveBridge: true, kind: "probe" }, window.location.origin);
+  } else if (msg && msg.type === "full-capture") {
+    window.postMessage({ __rtaLiveBridge: true, kind: "full-capture" }, window.location.origin);
   }
 });

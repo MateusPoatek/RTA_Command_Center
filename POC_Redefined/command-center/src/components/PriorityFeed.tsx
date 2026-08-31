@@ -26,8 +26,10 @@ import type { CardAction, CommandCard } from "../domain/types";
 import {
   actionLabels,
   confidenceLabel,
+  type CardGroup,
   getActiveSorted,
   getPrimaryAction,
+  groupActiveCards,
   impactLabel,
   primaryActionLabel,
   processLabel,
@@ -36,6 +38,13 @@ import {
 import { CopilotPanel, type CopilotStep } from "./CopilotPanel";
 
 const QUEUE_MAX = 8;
+
+function formatCountdown(totalSeconds: number): string {
+  const s = Math.max(0, Math.floor(totalSeconds));
+  const m = Math.floor(s / 60);
+  const sec = s % 60;
+  return `${m}:${String(sec).padStart(2, "0")}`;
+}
 
 // ---------------------------------------------------------------------------
 // Severity border left color
@@ -288,17 +297,106 @@ function PriorityCardItem({ card, rank, total, isNew, onAction, onCopilot }: Pri
 }
 
 // ---------------------------------------------------------------------------
+// Grouped priority card — a group of >=2 cards sharing the same account +
+// type + rule (e.g. "12 agents — Out-of-adherence: Zillow_Immediate").
+// Renders like PriorityCardItem, but the CTA acts on every member at once and
+// an expandable list shows the individual agents.
+// ---------------------------------------------------------------------------
+
+interface GroupedPriorityCardProps {
+  group: CardGroup;
+  rank: number;
+  total: number;
+  isNew: boolean;
+  onGroupAction: (action: CardAction) => void;
+  onCopilot: (initialStep?: CopilotStep) => void;
+}
+
+function GroupedPriorityCardItem({ group, rank, total, isNew, onGroupAction, onCopilot }: GroupedPriorityCardProps) {
+  const [expanded, setExpanded] = useState(false);
+  const card     = group.representative;
+  const primary  = getPrimaryAction(card);
+  const secondary = card.availableActions.filter((a) => a !== primary).slice(0, 3);
+
+  return (
+    <div
+      className={`priority-card${isNew ? " card-new" : ""}`}
+      style={{ borderLeftColor: severityBorder[card.severity] }}
+    >
+      <div className="priority-card__header">
+        <div className="priority-card__rank-group">
+          <span className="priority-card__rank">Do {rank}</span>
+          <span className="priority-card__process">{processLabel(card)}</span>
+          {card.lob && <span className="priority-card__lob">{card.lob}</span>}
+        </div>
+        <span className="priority-card__counter">{rank} of {total}</span>
+      </div>
+
+      <h2 className="priority-card__title">
+        {card.title} <span className="priority-card__group-badge">× {group.count} agents</span>
+      </h2>
+      <p className="priority-card__summary">{card.summary}</p>
+
+      <div className="priority-card__signals">
+        <span className="priority-card__status">{statusLabel(card.status)}</span>
+        <span className="priority-card__impact">{impactLabel(card)}</span>
+      </div>
+
+      <div className="priority-card__actions">
+        <button className="priority-card__cta" type="button" onClick={() => onGroupAction(primary)}>
+          {primaryActionLabel(card, primary)} ({group.count})
+        </button>
+
+        <div className="priority-card__secondary">
+          <button className="priority-card__ai-btn" type="button" onClick={() => onCopilot("why")}>
+            Ask AI
+          </button>
+          {secondary.map((a) => (
+            <button
+              key={a}
+              className="priority-card__sec-btn"
+              type="button"
+              onClick={() => onGroupAction(a)}
+            >
+              {actionLabels[a]}
+            </button>
+          ))}
+          <button
+            className="priority-card__sec-btn"
+            type="button"
+            onClick={() => setExpanded((v) => !v)}
+          >
+            {expanded ? "Hide agents" : `Show ${group.count} agents`}
+          </button>
+        </div>
+      </div>
+
+      {expanded && (
+        <ul className="priority-card__group-list">
+          {group.members.map((m) => (
+            <li key={m.id} className="priority-card__group-list-item">
+              {m.agent?.name ?? m.title} — {statusLabel(m.status)}
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Compact queue row
 // ---------------------------------------------------------------------------
 
 interface QueueRowProps {
-  card: CommandCard;
+  group: CardGroup;
   position: number;
   isNew: boolean;
   onPromote: () => void;
 }
 
-function QueueRow({ card, position, isNew, onPromote }: QueueRowProps) {
+function QueueRow({ group, position, isNew, onPromote }: QueueRowProps) {
+  const card = group.representative;
   return (
     <button
       className={`queue-row${isNew ? " card-new" : ""}`}
@@ -311,7 +409,9 @@ function QueueRow({ card, position, isNew, onPromote }: QueueRowProps) {
         style={{ background: severityBorder[card.severity] }}
       />
       <span className="queue-row__pos">{position}</span>
-      <span className="queue-row__title">{card.title}</span>
+      <span className="queue-row__title">
+        {card.title}{group.count > 1 ? ` (${group.count})` : ""}
+      </span>
       <span className="queue-row__process">{processLabel(card)}</span>
       {card.lob && <span className="queue-row__lob">{card.lob}</span>}
       <span className="queue-row__status">{statusLabel(card.status)}</span>
@@ -331,8 +431,20 @@ interface PriorityFeedProps {
   newCardIds: Set<string>;
   focusedCardId: string | null;
   onAction: (action: CardAction, cardId: string) => void;
+  /** Applies one action to every card in a group at once (see cardHelpers.groupActiveCards). */
+  onGroupAction: (action: CardAction, cardIds: string[]) => void;
   onFocus: (cardId: string) => void;
   onShowBoard: () => void;
+  /** Which account this feed is scoped to (for the "caught up" empty-state label). */
+  activeAccount?: string;
+  /** Cards actioned this shift for this account — shown as shift progress. */
+  handledThisShiftCount?: number;
+  // -- Alert dispatch batching (COPC) --
+  batchIntervalMinutes: number;
+  onBatchIntervalChange: (minutes: number) => void;
+  queuedForBatchCount: number;
+  secondsUntilNextBatch: number;
+  onFlushNow: () => void;
 }
 
 export function PriorityFeed({
@@ -340,21 +452,64 @@ export function PriorityFeed({
   newCardIds,
   focusedCardId,
   onAction,
+  onGroupAction,
   onFocus,
   onShowBoard,
+  activeAccount,
+  handledThisShiftCount = 0,
+  batchIntervalMinutes,
+  onBatchIntervalChange,
+  queuedForBatchCount,
+  secondsUntilNextBatch,
+  onFlushNow,
 }: PriorityFeedProps) {
   const [copilotCardId,   setCopilotCardId]   = useState<string | null>(null);
   const [copilotInitStep, setCopilotInitStep] = useState<CopilotStep>("why");
 
   const active = getActiveSorted(cards);
+  const groups = groupActiveCards(active);
 
-  if (active.length === 0) {
+  // Batch status + interval control — shown above the feed regardless of
+  // whether the queue is empty, so the RTA always sees when the next
+  // dispatch batch goes out (COPC: no instant per-agent alerts).
+  const batchStrip = (
+    <div className="priority-feed__batch-strip">
+      <span className="priority-feed__batch-queued">{queuedForBatchCount} queued for next batch</span>
+      <span className="priority-feed__batch-countdown">next batch in {formatCountdown(secondsUntilNextBatch)}</span>
+      <label className="priority-feed__batch-interval">
+        Interval (min)
+        <input
+          type="number"
+          min={1}
+          max={60}
+          value={batchIntervalMinutes}
+          onChange={(e) => onBatchIntervalChange(Math.max(1, Number(e.target.value) || 15))}
+        />
+      </label>
+      <button
+        className="priority-feed__batch-flush"
+        type="button"
+        onClick={onFlushNow}
+        disabled={queuedForBatchCount === 0}
+        title="Send everything queued right now, without waiting for the interval"
+      >
+        Flush now
+      </button>
+    </div>
+  );
+
+  if (groups.length === 0) {
     return (
       <div className="priority-feed">
+        {batchStrip}
         <div className="priority-feed__empty">
           <span className="priority-feed__empty-check">✓</span>
-          <p>Nothing needs your attention right now.</p>
-          <p className="priority-feed__empty-sub">The AI is watching 248 agents across 6 LOBs.</p>
+          <p>Caught up{activeAccount ? ` — ${activeAccount}` : ""} · 0 pending</p>
+          <p className="priority-feed__empty-sub">
+            {handledThisShiftCount > 0
+              ? `${handledThisShiftCount} handled this shift.`
+              : "The AI is watching 248 agents across 6 LOBs."}
+          </p>
         </div>
         <div className="priority-feed__footer">
           <button className="priority-feed__board-btn" type="button" onClick={onShowBoard}>
@@ -365,42 +520,67 @@ export function PriorityFeed({
     );
   }
 
-  // Promoted card: focused card first, otherwise top of sorted list
+  // Promoted group: the one containing the focused card, otherwise top of the sorted list
   const priorityIdx = focusedCardId
-    ? Math.max(0, active.findIndex((c) => c.id === focusedCardId))
+    ? Math.max(0, groups.findIndex((g) => g.members.some((m) => m.id === focusedCardId)))
     : 0;
-  const priorityCard  = active[priorityIdx];
-  const queueCards    = active.filter((_, i) => i !== priorityIdx);
-  const visibleQueue  = queueCards.slice(0, QUEUE_MAX);
-  const hiddenCount   = queueCards.length - visibleQueue.length;
-  const copilotCard   = copilotCardId ? active.find((c) => c.id === copilotCardId) : null;
+  const priorityGroup = groups[priorityIdx];
+  const queueGroups    = groups.filter((_, i) => i !== priorityIdx);
+  const visibleQueue   = queueGroups.slice(0, QUEUE_MAX);
+  const hiddenCount    = queueGroups.length - visibleQueue.length;
+  const totalCards     = groups.reduce((n, g) => n + g.count, 0);
+  const copilotCard    = copilotCardId ? active.find((c) => c.id === copilotCardId) : null;
+  const repId          = priorityGroup.representative.id;
 
   return (
     <div className="priority-feed">
+      {batchStrip}
 
-      {/* Priority card */}
-      <PriorityCardItem
-        card={priorityCard}
-        rank={priorityIdx + 1}
-        total={active.length}
-        isNew={newCardIds.has(priorityCard.id)}
-        onAction={(a) => {
-          onAction(a, priorityCard.id);
-          setCopilotCardId(null);
-        }}
-        onCopilot={(initStep = "why") => {
-          const isOpen = copilotCardId === priorityCard.id && copilotInitStep === initStep;
-          if (isOpen) {
+      {/* Priority card (or grouped priority card, when >1 agent shares this violation) */}
+      {priorityGroup.count === 1 ? (
+        <PriorityCardItem
+          card={priorityGroup.representative}
+          rank={priorityIdx + 1}
+          total={groups.length}
+          isNew={newCardIds.has(repId)}
+          onAction={(a) => {
+            onAction(a, repId);
             setCopilotCardId(null);
-          } else {
-            setCopilotInitStep(initStep);
-            setCopilotCardId(priorityCard.id);
-          }
-        }}
-      />
+          }}
+          onCopilot={(initStep = "why") => {
+            const isOpen = copilotCardId === repId && copilotInitStep === initStep;
+            if (isOpen) {
+              setCopilotCardId(null);
+            } else {
+              setCopilotInitStep(initStep);
+              setCopilotCardId(repId);
+            }
+          }}
+        />
+      ) : (
+        <GroupedPriorityCardItem
+          group={priorityGroup}
+          rank={priorityIdx + 1}
+          total={groups.length}
+          isNew={priorityGroup.members.some((m) => newCardIds.has(m.id))}
+          onGroupAction={(a) => {
+            onGroupAction(a, priorityGroup.members.map((m) => m.id));
+            setCopilotCardId(null);
+          }}
+          onCopilot={(initStep = "why") => {
+            const isOpen = copilotCardId === repId && copilotInitStep === initStep;
+            if (isOpen) {
+              setCopilotCardId(null);
+            } else {
+              setCopilotInitStep(initStep);
+              setCopilotCardId(repId);
+            }
+          }}
+        />
+      )}
 
-      {/* Inline copilot for priority card */}
-      {copilotCard && copilotCard.id === priorityCard.id && (
+      {/* Inline copilot for priority card/group (always keyed to the representative card) */}
+      {copilotCard && copilotCard.id === repId && (
         <CopilotPanel
           key={`${copilotCard.id}-${copilotInitStep}`}
           card={copilotCard}
@@ -416,32 +596,18 @@ export function PriorityFeed({
       {/* Compact queue */}
       {visibleQueue.length > 0 && (
         <div className="priority-feed__queue">
-          <p className="priority-feed__queue-label">Up next — {active.length - 1} more</p>
-          {visibleQueue.map((card, i) => (
-            <div key={card.id}>
-              <QueueRow
-                card={card}
-                position={i + 2}
-                isNew={newCardIds.has(card.id)}
-                onPromote={() => {
-                  onFocus(card.id);
-                  setCopilotCardId(null);
-                }}
-              />
-              {/* Inline copilot for queue items */}
-              {copilotCard && copilotCard.id === card.id && (
-                <CopilotPanel
-                  key={`${copilotCard.id}-${copilotInitStep}`}
-                  card={copilotCard}
-                  initialStep={copilotInitStep}
-                  onAction={(a) => {
-                    onAction(a, copilotCard.id);
-                    setCopilotCardId(null);
-                  }}
-                  onClose={() => setCopilotCardId(null)}
-                />
-              )}
-            </div>
+          <p className="priority-feed__queue-label">Up next — {totalCards - priorityGroup.count} more</p>
+          {visibleQueue.map((group, i) => (
+            <QueueRow
+              key={group.key}
+              group={group}
+              position={i + 2}
+              isNew={group.members.some((m) => newCardIds.has(m.id))}
+              onPromote={() => {
+                onFocus(group.representative.id);
+                setCopilotCardId(null);
+              }}
+            />
           ))}
           {hiddenCount > 0 && (
             <button

@@ -220,3 +220,22 @@ test("empty / malformed captures don't throw", () => {
   assert.deepEqual(RTAParse.buildCards({}, {}), []);
   assert.deepEqual(RTAParse.buildCards({ calendarFilters: [{}] }, {}), []);
 });
+
+test("extractRoster buckets actualSchedule events by hour of day (hourly_buckets_json)", () => {
+  const rows = RTAParse.extractRoster(
+    { calendarFilters: [census, targeted], workResources },
+    { lob: "DEMO" }
+  );
+  const alpha = rows.find((r) => r.name === "Tester, Alpha");
+  const buckets = JSON.parse(alpha.hourly_buckets_json);
+
+  // 1001's events (see fixture above): 14:00Z-18:00Z (240m, paid+work),
+  // 18:00Z-18:30Z (30m, paid only), 18:30Z-19:00Z (30m, neither).
+  // Bucketed by the LOCAL hour of each event's start (same conversion the
+  // implementation uses), so this test is timezone-independent.
+  const hour14 = String(new Date("2025-05-12T14:00:00Z").getHours());
+  const hour18 = String(new Date("2025-05-12T18:00:00Z").getHours());
+
+  assert.deepEqual(buckets[hour14], { activeMinutes: 240, productiveMinutes: 240 });
+  assert.deepEqual(buckets[hour18], { activeMinutes: 60, productiveMinutes: 30 });
+});

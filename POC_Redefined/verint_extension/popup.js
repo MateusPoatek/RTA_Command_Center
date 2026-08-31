@@ -3,6 +3,7 @@ const countEl = document.getElementById("count");
 const listEl = document.getElementById("list");
 const pushBtn = document.getElementById("push");
 const autopushEl = document.getElementById("autopush");
+const lobEl = document.getElementById("lob");
 
 function render(cards) {
   countEl.textContent = String(cards.length);
@@ -63,7 +64,59 @@ autopushEl.addEventListener("change", () => {
   chrome.runtime.sendMessage({ type: "set-autopush", on: autopushEl.checked }, () => void chrome.runtime.lastError);
 });
 
+// Which account's Verint filter is currently applied — labels cards/roster
+// accordingly (was hardcoded to "EPIC" regardless of the account being captured).
+// Switching this re-derives cards/roster from the current capture under the new label.
+if (lobEl) {
+  chrome.runtime.sendMessage({ type: "get-lob" }, (resp) => {
+    if (chrome.runtime.lastError) return;
+    if (resp && resp.lob) lobEl.value = resp.lob;
+  });
+  lobEl.addEventListener("change", () => {
+    chrome.runtime.sendMessage({ type: "set-lob", lob: lobEl.value }, () => void chrome.runtime.lastError);
+  });
+}
+
+// ---------------------- Full Capture (one pass, no paging) --------------
+// Composes and fires its own sequential Verint reads (census + targeted)
+// instead of relying on the RTA paging the calendar. This is active polling
+// (ADR-0004/0005) — confirm before firing, same spirit as the gate probe's
+// "keep this popup open" hint, so it's never triggered silently.
+const captureBtn = document.getElementById("full-capture");
+const captureStatusEl = document.getElementById("capture-status");
+
+function renderCaptureProgress(p) {
+  if (!captureStatusEl) return;
+  if (!p) { captureStatusEl.textContent = ""; return; }
+  if (p.phase === "starting") captureStatusEl.textContent = "Starting…";
+  else if (p.phase === "census") captureStatusEl.textContent = `Census: page ${p.done}…`;
+  else if (p.phase === "targeted") captureStatusEl.textContent = `Targeted: chunk ${p.done}/${p.total}…`;
+  else if (p.phase === "done") captureStatusEl.textContent = `✓ Full Capture complete (${p.total} targeted chunk(s)).`;
+  else if (p.phase === "aborted") captureStatusEl.textContent = "⚠ Aborted (5xx) — see console.";
+}
+
+function pollCaptureProgress() {
+  chrome.runtime.sendMessage({ type: "get-capture-progress" }, (p) => {
+    if (chrome.runtime.lastError) return;
+    renderCaptureProgress(p);
+  });
+}
+
+if (captureBtn) {
+  captureBtn.addEventListener("click", () => {
+    const ok = window.confirm(
+      "Full Capture issues a sequence of automated reads against Verint (census + targeted pulls) instead of paging manually.\n\n" +
+      "Only run this against an account once cleared with the team (see ACCOUNT_ONBOARDING_PLAN.md).\n\n" +
+      "Proceed?"
+    );
+    if (!ok) return;
+    chrome.runtime.sendMessage({ type: "run-full-capture" }, () => void chrome.runtime.lastError);
+  });
+}
+
 refreshState(); // initial paint
+pollCaptureProgress();
+setInterval(pollCaptureProgress, 1000); // frequent — the run itself only lasts seconds
 setInterval(paintHeartbeat, 1000); // tick "Ns ago" every second
 setInterval(refreshState, 3000); // re-poll for fresh captures while the popup is open
 

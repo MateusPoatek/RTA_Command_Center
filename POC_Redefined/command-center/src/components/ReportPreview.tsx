@@ -12,6 +12,7 @@ const TYPE_LABELS: Record<DiscrepancyType, string> = {
   clocked_in_not_in_adherence: "No Verint record",
   in_adherence_no_clock_in:    "No GTT clock-in",
   clocked_out_still_active:    "Ghost session",
+  not_yet_scheduled:           "Shift not started",
   match_ok:                    "OK",
 };
 
@@ -85,7 +86,7 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
             <thead>
               <tr style={{ background: "#1e293b" }}>
-                {["Employee", "Subgroup", "GTT Event", "Verint Status", "Adh %", "OOA", "Type"].map((h) => (
+                {["Employee", "Subgroup", "GTT Events", "Verint Status", "Adh %", "OOA", "Productive", "Type"].map((h) => (
                   <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600, color: "#94a3b8", borderBottom: "1px solid #334155" }}>{h}</th>
                 ))}
               </tr>
@@ -99,11 +100,14 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
                   <td style={{ padding: "5px 8px" }}>{row.verint_status || "—"}</td>
                   <td style={{ padding: "5px 8px" }}>{row.adherence_pct !== null ? `${row.adherence_pct}%` : "—"}</td>
                   <td style={{ padding: "5px 8px" }}>{row.ooa_seconds ? `${Math.floor(row.ooa_seconds / 60)}m` : "—"}</td>
+                  <td style={{ padding: "5px 8px" }}>{row.productive_minutes ? `${(row.productive_minutes / 60).toFixed(1)}h` : "—"}</td>
                   <td style={{ padding: "5px 8px" }}>
                     <span style={{
                       fontSize: "0.7rem", padding: "2px 6px", borderRadius: 4,
-                      background: row.discrepancy_type === "match_ok" ? "#22c55e22" : "#ef444422",
-                      color: row.discrepancy_type === "match_ok" ? "#22c55e" : "#ef4444",
+                      background: row.discrepancy_type === "match_ok" ? "#22c55e22"
+                        : row.discrepancy_type === "not_yet_scheduled" ? "#64748b22" : "#ef444422",
+                      color: row.discrepancy_type === "match_ok" ? "#22c55e"
+                        : row.discrepancy_type === "not_yet_scheduled" ? "#64748b" : "#ef4444",
                     }}>
                       {TYPE_LABELS[row.discrepancy_type]}
                     </span>

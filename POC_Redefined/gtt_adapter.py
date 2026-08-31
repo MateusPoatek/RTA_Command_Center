@@ -53,8 +53,21 @@ class GTTRow:
     # Derived helpers
     @property
     def surname(self) -> str:
-        """Last token of employee name for name-based join with Verint."""
-        return self.employee.split()[-1].lower() if self.employee else ""
+        """Surname for name-based join with Verint.
+
+        GTT's `employee` field is "Firstname Surname" — but Central American
+        names commonly carry TWO surnames (paternal + maternal, e.g. "Gabriela
+        Rivas Marroquin"). Verint's "Last, First" format puts the FULL surname
+        (both words) before the comma — see
+        gtt_verint_reconciler._verint_surname(). Taking only the last token
+        here ("marroquin") would never match Verint's "rivas marroquin" and
+        silently pushed every double-surname employee onto the fuzzy-match
+        fallback (or dropped them entirely if rapidfuzz wasn't installed).
+        Assumption: exactly one first name token — a compound first name
+        (e.g. "Maria Jose Rivas Marroquin") would still mismatch; this is a
+        strict improvement for the common case, not a perfect parser.
+        """
+        return " ".join(self.employee.split()[1:]).lower() if self.employee else ""
 
     @property
     def firstname(self) -> str:

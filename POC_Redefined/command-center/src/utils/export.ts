@@ -109,14 +109,19 @@ export function exportReportXlsx(report: ReconciliationReport): void {
     "Workday ID": d.workday_id,
     "Subgroup (GTT)": d.subgroup,
     "LOB (Verint)": d.lob,
-    "GTT Event": d.gtt_event,
+    "GTT Events": d.gtt_event,
+    "# GTT Events": d.gtt_event_count,
     "Verint Status": d.verint_status,
     "Adherence %": d.adherence_pct ?? "",
+    "Adherence Minutes": d.adherence_minutes ?? "",
     "OOA (sec)": d.ooa_seconds ?? "",
+    "OOA Minutes (Total)": d.ooa_minutes ?? "",
+    "Productive Minutes": d.productive_minutes ?? "",
+    "Scheduled Minutes": d.scheduled_minutes ?? "",
     "Discrepancy Type": d.discrepancy_type,
   }));
   const ws1 = XLSX.utils.json_to_sheet(discRows);
-  ws1["!cols"] = [20, 14, 18, 18, 12, 20, 12, 10, 32].map((w) => ({ wch: w }));
+  ws1["!cols"] = [20, 14, 18, 18, 24, 12, 20, 12, 16, 10, 18, 16, 16, 32].map((w) => ({ wch: w }));
   XLSX.utils.book_append_sheet(wb, ws1, "Discrepancies");
 
   // Sheet 2: intelligence bullets + summary

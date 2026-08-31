@@ -34,7 +34,8 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import type { CommandCard, Severity } from "../domain/types";
+import type { AccountId, CommandCard, Severity } from "../domain/types";
+import { isAccountCard } from "../domain/types";
 import type { Scenario } from "../domain/scenario_types";
 import {
   SCAN_PULSE_MS,
@@ -106,6 +107,8 @@ interface UseLiveEngineOptions {
   activeScenario: Scenario;
   /** Current card list (read by the auto-mode loop to find actionable cards). */
   cards: CommandCard[];
+  /** Which account the RTA is currently viewing — autonomous mode only acts within it. */
+  activeAccount: AccountId;
   /** Setter for the card list (called by scan pulse and card arrival loops). */
   setCards: React.Dispatch<React.SetStateAction<CommandCard[]>>;
   /**
@@ -144,6 +147,7 @@ export function useLiveEngine({
   cards,
   setCards,
   onAutoAction,
+  activeAccount,
 }: UseLiveEngineOptions): UseLiveEngineReturn {
   const [agentLog, setAgentLog] = useState<string[]>([
     "AI agent initialised — awaiting shift start",
@@ -155,12 +159,14 @@ export function useLiveEngine({
   const cardQueueRef    = useRef<CommandCard[]>([]);
   const cardsRef        = useRef<CommandCard[]>(cards);
   const onAutoActionRef = useRef(onAutoAction);
+  const activeAccountRef = useRef(activeAccount);
   const csrIndexRef     = useRef(0);
   const pulseIndexRef   = useRef(0);
   const lobIndexRef     = useRef(0);
 
   useEffect(() => { cardsRef.current = cards; }, [cards]);
   useEffect(() => { onAutoActionRef.current = onAutoAction; }, [onAutoAction]);
+  useEffect(() => { activeAccountRef.current = activeAccount; }, [activeAccount]);
 
   // Reset the card queue whenever the scenario changes.
   useEffect(() => {
@@ -269,11 +275,18 @@ export function useLiveEngine({
       const delay = AUTO_ACTION_MIN_MS + Math.random() * (AUTO_ACTION_MAX_MS - AUTO_ACTION_MIN_MS);
       return window.setTimeout(() => {
         const current = cardsRef.current;
+        const account = activeAccountRef.current;
 
+        // Only "needs-review"/"classified" — NOT "ready-to-send": once
+        // approve-send queues a card for the next dispatch batch, it must not
+        // be picked again every tick (it isn't undecided anymore, it's just
+        // waiting to flush). Also scoped to the account currently being
+        // viewed, so autonomous mode never acts on — or toasts about — a
+        // card the RTA can't currently see.
         const actionable = current.filter(
           (c) =>
-            (c.status === "needs-review" || c.status === "classified" || c.status === "ready-to-send") &&
-            !["sent", "suppressed", "resolved", "escalated", "archived"].includes(c.status),
+            (c.status === "needs-review" || c.status === "classified") &&
+            (!isAccountCard(c.lob) || c.lob === account),
         );
 
         if (actionable.length === 0) {

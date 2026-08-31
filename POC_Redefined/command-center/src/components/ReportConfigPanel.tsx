@@ -20,15 +20,20 @@ import type {
 } from "../domain/types";
 
 const ALL_COLUMNS: { key: keyof DiscrepancyRow; label: string }[] = [
-  { key: "employee",         label: "Employee" },
-  { key: "workday_id",       label: "Workday ID" },
-  { key: "subgroup",         label: "Subgroup (GTT)" },
-  { key: "lob",              label: "LOB (Verint)" },
-  { key: "gtt_event",        label: "GTT Event" },
-  { key: "verint_status",    label: "Verint Status" },
-  { key: "adherence_pct",    label: "Adherence %" },
-  { key: "ooa_seconds",      label: "OOA Duration" },
-  { key: "discrepancy_type", label: "Discrepancy Type" },
+  { key: "employee",          label: "Employee" },
+  { key: "workday_id",        label: "Workday ID" },
+  { key: "subgroup",          label: "Subgroup (GTT)" },
+  { key: "lob",               label: "LOB (Verint)" },
+  { key: "gtt_event",         label: "GTT Events" },
+  { key: "gtt_event_count",   label: "# GTT Events" },
+  { key: "verint_status",     label: "Verint Status" },
+  { key: "adherence_pct",     label: "Adherence %" },
+  { key: "adherence_minutes", label: "Adherence Minutes" },
+  { key: "ooa_seconds",       label: "OOA Duration" },
+  { key: "ooa_minutes",       label: "OOA Minutes (Total)" },
+  { key: "productive_minutes", label: "Productive Time" },
+  { key: "scheduled_minutes", label: "Scheduled Time" },
+  { key: "discrepancy_type",  label: "Discrepancy Type" },
 ];
 
 const STORAGE_CONFIG  = "rta.report.config";

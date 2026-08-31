@@ -199,7 +199,10 @@
   }
 
   // Fire ONE read. Sequential lock + abort-on-5xx. Returns a name-free row.
-  async function probeFire(label, requested, mutate) {
+  // opts.emitFull: also hand the REAL response body to emit() — this is what
+  // lets Full Capture (below) feed the same read into the real capture
+  // pipeline (captures.calendarFilters → rebuild()), not just a count.
+  async function probeFire(label, requested, mutate, opts) {
     if (probe.aborted) return { label, requested, note: "skipped (aborted after 5xx)" };
     if (!lastCalReq) return { label, requested, error: "no captured request yet — page the calendar first" };
     if (probe.inFlight) return { label, requested, error: "concurrent fire blocked" };
@@ -224,6 +227,7 @@
       try { json = JSON.parse(txt); } catch (_) {}
       const { returned, total } = json ? respCounts(json) : { returned: 0, total: null };
       if (json) indexFromResponseText(txt); // opportunistically grow the index
+      if (opts && opts.emitFull) emit(lastCalReq.url, res.status, txt);
       const retryAfter = res.headers.get("retry-after");
       return { label, requested, status: res.status, latencyMs, returned, total, retryAfter: retryAfter || null };
     } catch (err) {
@@ -242,7 +246,7 @@
   // that all-blocked loop — which only sleeps — finishes first and overwrites
   // the real result. Guarding here means exactly one loop ever runs + posts.)
   async function runProbe() {
-    if (probe.running) return;
+    if (probe.running || capture.running) return;
     probe.running = true;
     probe.aborted = false;
     try {
@@ -287,14 +291,98 @@
     }
   }
 
-  // Background → content_verint → here: trigger a re-fetch ("Sync now" / timer)
-  // or run the gate probe ("Run gate probe" from the popup).
+  // ====================== FULL CAPTURE (one pass, no paging) ===============
+  // Read-only. Same primitive as the gate probe above (self-composed,
+  // sequential, authenticated reads) but instead of summarising to counts, it
+  // feeds every real response through emit() — the same hook the passive tee
+  // uses — so it lands in the actual capture pipeline (captures.calendarFilters
+  // → rebuild()) exactly as if the RTA had paged to see it. This is what
+  // replaces "page through the calendar every few minutes" with one click.
+  //
+  // This is ACTIVE POLLING (ADR-0004/0005) at real-capture scale, not the
+  // gate's ~10-call diagnostic burst — coordinate with governance/Dione before
+  // running this against a live account's tenant (see ACCOUNT_ONBOARDING_PLAN.md).
+  //
+  // Longer-term: this is a bridge, not the final architecture. The real fix is
+  // server-side Verint API access (Track B, SERVER_SIDE_ARCHITECTURE.md), which
+  // removes the browser/extension dependency entirely once credentials land.
+
+  const capture = { running: false };
+
+  function postProgress(phase, done, total) {
+    window.postMessage(
+      { __rtaLiveBridge: true, kind: "capture-progress", phase, done, total },
+      window.location.origin
+    );
+  }
+
+  async function runFullCapture() {
+    if (capture.running || probe.running) return;
+    capture.running = true;
+    probe.aborted = false;
+    const gap = 800; // ms between fires — same gentle, sequential cadence as the gate probe
+    try {
+      // Census phase: page until Verint returns a short (< 50) page. Bounded
+      // implicitly by whatever date-view (day vs. multi-week) was on screen
+      // when lastCalReq was captured — keep the calendar on a 1-day view
+      // before triggering this (see VERINT_EXTRACTION_CAPABILITIES.md F1).
+      let offset = 0;
+      let page = 0;
+      while (true) {
+        page++;
+        postProgress("census", page, null);
+        const row = await probeFire(
+          `census offset=${offset}`,
+          "page",
+          (c) => makeCensus(c, offset),
+          { emitFull: true }
+        );
+        if (probe.aborted || row.error) {
+          postProgress("aborted", page, null);
+          return;
+        }
+        if ((row.returned || 0) < 50) break; // last page
+        offset += 50;
+        await _sleep(gap);
+      }
+
+      // Targeted phase: chunk every indexed id (built during census, above)
+      // into groups of 50 — the same neighbourhood size already proven live
+      // (ADR-0003 V4) — and pull the adherence/schedule detail per chunk.
+      const allIds = probeIndex.map((x) => x.id);
+      const chunks = [];
+      for (let i = 0; i < allIds.length; i += 50) chunks.push(allIds.slice(i, i + 50));
+
+      for (let i = 0; i < chunks.length; i++) {
+        await _sleep(gap);
+        postProgress("targeted", i + 1, chunks.length);
+        const row = await probeFire(
+          `targeted chunk ${i + 1}/${chunks.length}`,
+          chunks[i].length,
+          (c) => setSelection(c, chunks[i]),
+          { emitFull: true }
+        );
+        if (probe.aborted || row.error) {
+          postProgress("aborted", i + 1, chunks.length);
+          return;
+        }
+      }
+      postProgress("done", chunks.length, chunks.length);
+    } finally {
+      capture.running = false;
+    }
+  }
+
+  // Background → content_verint → here: trigger a re-fetch ("Sync now" / timer),
+  // run the gate probe ("Run gate probe"), or run a full one-pass capture
+  // ("Full Capture") from the popup.
   window.addEventListener("message", function (e) {
     if (e.source !== window) return;
     const d = e.data;
     if (!d || d.__rtaLiveBridge !== true) return;
     if (d.kind === "refetch") refetch();
     else if (d.kind === "probe") runProbe();
+    else if (d.kind === "full-capture") runFullCapture();
   });
 
   // Let the page know the hook is live (debug only).

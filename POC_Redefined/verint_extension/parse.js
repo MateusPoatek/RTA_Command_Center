@@ -171,7 +171,12 @@
     const vio = sumNums(a.violationMinutesPerInterval);
     let inPct = Math.round(((pub - vio) / pub) * 100);
     inPct = Math.max(0, Math.min(100, inPct));
-    return { inPct: inPct, outPct: 100 - inPct };
+    // Raw minutes alongside the percentages — the report's "adherence minutes"
+    // stat needs actual minute counts, not just a %, to aggregate across agents.
+    return {
+      inPct: inPct, outPct: 100 - inPct,
+      adherenceMinutes: Math.round(pub - vio), violationMinutes: Math.round(vio),
+    };
   }
 
   // Normalise a Verint boolean flag — the REST API can serialise booleans as
@@ -208,6 +213,49 @@
       out.shiftSpanMinutes = Math.round((endT - startT) / 60000);
     }
     return out;
+  }
+
+  // Scheduled (PLANNED) shift open/close, from publishedSchedule.events — NOT
+  // the actual-worked timeline above. This is the one that exists for EVERY
+  // agent regardless of whether they've generated any activity yet: an agent
+  // who hasn't started their shift has an EMPTY actualSchedule (so
+  // deriveShiftProductive returns no bounds at all), but their
+  // publishedSchedule is populated the moment the day's schedule is published.
+  // This is the correct source for "has this agent's shift started yet?".
+  function deriveScheduledShift(rec) {
+    const events = (rec.publishedSchedule && rec.publishedSchedule.events) || [];
+    if (!events.length) return null;
+    let startT = null, endT = null, startIso = null, endIso = null;
+    for (const e of events) {
+      const s = e.startTime ? new Date(e.startTime).getTime() : NaN;
+      const en = e.endTime ? new Date(e.endTime).getTime() : NaN;
+      if (!Number.isNaN(s) && (startT === null || s < startT)) { startT = s; startIso = e.startTime; }
+      if (!Number.isNaN(en) && (endT === null || en > endT)) { endT = en; endIso = e.endTime; }
+    }
+    if (startT === null || endT === null || endT < startT) return null;
+    return { scheduledStartIso: startIso, scheduledEndIso: endIso };
+  }
+
+  // Intraday hour buckets from the actual-worked timeline (same source as
+  // deriveShiftProductive) — for "what hour of the day is busiest" charts.
+  // Simplification: each event's FULL duration is bucketed under the hour of
+  // its start time (not split across an hour boundary). Events here are
+  // typically well under an hour (breaks, tickets, calls), so the rare
+  // boundary-spanning event is a small, acceptable approximation rather than
+  // worth a more complex interval-splitting algorithm.
+  function deriveHourlyBuckets(rec) {
+    const events = (rec.actualSchedule && rec.actualSchedule.events) || [];
+    const buckets = {};
+    for (const e of events) {
+      const s = e.startTime ? new Date(e.startTime) : null;
+      if (!s || Number.isNaN(s.getTime())) continue;
+      const hour = String(s.getHours());
+      const m = Number(e.durationMinutes) || 0;
+      if (!buckets[hour]) buckets[hour] = { activeMinutes: 0, productiveMinutes: 0 };
+      buckets[hour].activeMinutes += m;
+      if (flag(e.isPaid)) buckets[hour].productiveMinutes += m;
+    }
+    return buckets;
   }
 
   // captures: { calendarFilter|calendarFilters: <obj>|[<obj>...], workResources: [<obj>...] }
@@ -279,7 +327,10 @@
   //
   // Output rows match verint_normalize.py's RAW_KEYS contract:
   //   { name, scheduled_activity, out_of_adherence, actual_activity,
-  //     time_in_activity, days_adherence }
+  //     time_in_activity, days_adherence, shift_start, shift_end,
+  //     scheduled_shift_start, scheduled_shift_end, productive_paid_minutes,
+  //     productive_work_minutes, adherence_minutes, ooa_minutes,
+  //     hourly_buckets_json }
   function extractRoster(captures, opts) {
     opts = opts || {};
     const lob = opts.lob || "EPIC";
@@ -297,6 +348,9 @@
 
       const adh = deriveAdherence(r);
       const adhPct = adh ? `${adh.inPct}%` : "";
+      const sp = deriveShiftProductive(r); // shift_start/end from actualSchedule.events (same helper buildCards uses)
+      const sched = deriveScheduledShift(r); // scheduled_shift_start/end from publishedSchedule.events — populated even before the agent has started
+      const hourly = deriveHourlyBuckets(r); // per-hour active/productive minutes, for intraday charts
 
       // Find the worst (longest) real OOA violation for this agent.
       const violations = (r.adherence && r.adherence.violations) || [];
@@ -339,6 +393,23 @@
         time_in_activity: fmtHms(ooaSecs),
         days_adherence: adhPct,
         lob: lob,
+        shift_start: (sp && sp.shiftStartIso) || "",
+        shift_end: (sp && sp.shiftEndIso) || "",
+        scheduled_shift_start: (sched && sched.scheduledStartIso) || "",
+        scheduled_shift_end: (sched && sched.scheduledEndIso) || "",
+        // Productive minutes so far today (paid vs work — see deriveShiftProductive's
+        // note: the "productive" definition is a pending client-contract decision;
+        // paid is the safer default). Adherence minutes from the same interval data
+        // driving days_adherence, but as raw minutes instead of a percentage.
+        productive_paid_minutes: (sp && sp.productivePaidMinutes) || 0,
+        productive_work_minutes: (sp && sp.productiveWorkMinutes) || 0,
+        adherence_minutes: (adh && adh.adherenceMinutes) || 0,
+        ooa_minutes: (adh && adh.violationMinutes) || 0,
+        // JSON-encoded — the one nested field in this otherwise-flat row
+        // contract. Kept as a string so the existing flat RAW_KEYS pipe
+        // doesn't need restructuring for one field; parsed once on the
+        // Python side (verint_normalize.py).
+        hourly_buckets_json: JSON.stringify(hourly),
       });
     }
     return rows;

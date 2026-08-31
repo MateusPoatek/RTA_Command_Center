@@ -51,7 +51,7 @@ export function AutoActionToast({ action }: AutoActionToastProps) {
       className={`auto-toast auto-toast--${phase}`}
       role="status"
       aria-live="polite"
-      aria-label={`AI sent alert for ${action.title}`}
+      aria-label={`AI queued alert for ${action.title}`}
     >
       {/* Header row */}
       <div className="auto-toast__header">
@@ -61,7 +61,7 @@ export function AutoActionToast({ action }: AutoActionToastProps) {
           aria-hidden="true"
         />
         <span className="auto-toast__headline">
-          [AI] Sent alert
+          [AI] Queued alert
         </span>
         <span className="auto-toast__arrow">→</span>
         <span className="auto-toast__channel">{action.channel}</span>

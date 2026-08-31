@@ -13,7 +13,8 @@
  *   ON  → pulsing green "AUTO · N sent" (animated border, green background)
  */
 
-import type { RTAProfile } from "../domain/types";
+import type { AccountId, RTAProfile } from "../domain/types";
+import { ACCOUNTS } from "../domain/types";
 import type { ScenarioId } from "../data/scenarios";
 import { scenarios } from "../data/scenarios";
 
@@ -27,6 +28,7 @@ interface CommandBarProps {
   autoSentCount: number;
   captureRunning: boolean;
   activeScenarioId: ScenarioId;
+  activeAccount: AccountId;
   isOutageActive?: boolean;
   hasReport?: boolean;
   onStart: () => void;
@@ -36,6 +38,7 @@ interface CommandBarProps {
   onCapture: () => void;
   onOpenBriefing: () => void;
   onScenarioChange: (id: ScenarioId) => void;
+  onAccountChange: (id: AccountId) => void;
   onGenerateReport?: () => void;
 }
 
@@ -58,6 +61,7 @@ export function CommandBar({
   autoSentCount,
   captureRunning,
   activeScenarioId,
+  activeAccount,
   isOutageActive,
   hasReport,
   onStart,
@@ -67,6 +71,7 @@ export function CommandBar({
   onCapture,
   onOpenBriefing,
   onScenarioChange,
+  onAccountChange,
   onGenerateReport,
 }: CommandBarProps) {
   // Effective status: override to "Incident" when outage is detected
@@ -105,6 +110,20 @@ export function CommandBar({
             {effectiveStatus}
           </span>
         </div>
+
+        <span className="command-bar__divider" />
+
+        <select
+          className="command-bar__account-select"
+          value={activeAccount}
+          onChange={(e) => onAccountChange(e.target.value as AccountId)}
+          aria-label="Active account"
+          title="Cards, dispatch history, and batching are all scoped to this account"
+        >
+          {ACCOUNTS.map((id) => (
+            <option key={id} value={id}>{id}</option>
+          ))}
+        </select>
 
         <span className="command-bar__divider" />
 

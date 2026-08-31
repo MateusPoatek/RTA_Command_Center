@@ -21,8 +21,10 @@
  *   If you need to add a new channel, update channelConfig.ts only.
  */
 
+import { useState } from "react";
 import type { DispatchEntry } from "../domain/scenario_types";
 import { formatChannel } from "../shared/channelConfig";
+import { type DispatchBatch, groupByCycle } from "../utils/dispatchHelpers";
 
 // ---------------------------------------------------------------------------
 // Row component
@@ -124,6 +126,54 @@ function DispatchRow({ entry, onSelect }: DispatchRowProps) {
 }
 
 // ---------------------------------------------------------------------------
+// Batch rollup — reads as "Batch #N — HH:MM: X alerts sent" by default,
+// expandable to the individual entries, instead of a flat list of
+// near-identical rows for every agent in a batch. Grouping logic lives in
+// utils/dispatchHelpers.ts (shared with CloseShiftPanel's handoff summary).
+// ---------------------------------------------------------------------------
+
+function DispatchBatchRow({ batch, onSelect }: { batch: DispatchBatch; onSelect?: (entry: DispatchEntry) => void }) {
+  const [expanded, setExpanded] = useState(false);
+
+  // A batch of one reads exactly like a plain row — no rollup step needed.
+  if (batch.entries.length === 1) {
+    return <DispatchRow entry={batch.entries[0]} onSelect={onSelect} />;
+  }
+
+  const time = new Date(batch.latestTimestamp).toLocaleTimeString([], {
+    hour: "2-digit", minute: "2-digit", second: "2-digit",
+  });
+  const sentCount = batch.entries.filter((e) => e.status === "sent").length;
+  const escalatedCount = batch.entries.filter((e) => e.status === "escalated").length;
+
+  return (
+    <div className="dispatch-batch">
+      <button
+        type="button"
+        className="dispatch-batch__header"
+        onClick={() => setExpanded((v) => !v)}
+        aria-expanded={expanded}
+      >
+        <span className="dispatch-batch__label">Batch #{batch.cycle}</span>
+        <span className="dispatch-batch__time">{time}</span>
+        <span className="dispatch-batch__count">
+          {sentCount > 0 && `${sentCount} sent`}
+          {escalatedCount > 0 && `${sentCount > 0 ? " · " : ""}${escalatedCount} escalated`}
+        </span>
+        <span className="dispatch-batch__toggle">{expanded ? "Hide" : "Show"} details</span>
+      </button>
+      {expanded && (
+        <div className="dispatch-batch__rows">
+          {batch.entries.map((entry) => (
+            <DispatchRow entry={entry} key={entry.id} onSelect={onSelect} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // DispatchFeed — exported panel
 // ---------------------------------------------------------------------------
 
@@ -165,10 +215,10 @@ export function DispatchFeed({ entries, onSelect }: DispatchFeedProps) {
         <span className="dispatch-feed__order-hint">Latest first</span>
       </div>
 
-      {/* Rows — reversed so newest entry is at top */}
+      {/* Batches — grouped by dispatch cycle, newest batch first */}
       <div className="dispatch-feed__list">
-        {[...entries].reverse().map((entry) => (
-          <DispatchRow entry={entry} key={entry.id} onSelect={onSelect} />
+        {groupByCycle(entries).map((batch) => (
+          <DispatchBatchRow batch={batch} key={batch.cycle} onSelect={onSelect} />
         ))}
       </div>
     </div>

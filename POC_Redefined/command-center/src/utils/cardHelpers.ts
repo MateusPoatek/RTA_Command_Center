@@ -110,6 +110,59 @@ export function getActiveSorted(cards: CommandCard[]): CommandCard[] {
 }
 
 // ---------------------------------------------------------------------------
+// Card grouping — collapse near-duplicate cards for display
+//
+// Live captures routinely surface many cards that share the same account +
+// violation type, one per affected agent (e.g. 12 separate "Out-of-adherence:
+// Zillow_Immediate" cards). Grouping them into one visual unit — with a count,
+// expandable to the individual agents — keeps the feed scannable instead of a
+// wall of near-identical rows. This is a presentation-layer transform only:
+// the underlying CommandCard[] and runCardAction mutation logic don't change
+// shape; a "group action" just applies the same action to every member.
+// ---------------------------------------------------------------------------
+
+export interface CardGroup {
+  /** Stable key for this group: account + card type + rule (or title, if no rule). */
+  key: string;
+  /** Members sorted by priority, most urgent first. */
+  members: CommandCard[];
+  /** Highest-priority member — used for the group's shared title/summary/severity display. */
+  representative: CommandCard;
+  count: number;
+}
+
+function groupKey(c: CommandCard): string {
+  return `${c.lob ?? "—"}::${c.type}::${c.rule?.id ?? c.title}`;
+}
+
+/**
+ * Buckets cards sharing the same account + type + rule into CardGroups,
+ * sorted by the priority of each group's most urgent member.
+ *
+ * @param cards - Already-filtered active cards (see getActiveSorted).
+ * @returns     Groups, most urgent first. A card with no siblings is still
+ *              returned as a group of size 1 — callers can render size-1
+ *              groups exactly like an individual card.
+ */
+export function groupActiveCards(cards: CommandCard[]): CardGroup[] {
+  const buckets = new Map<string, CommandCard[]>();
+  for (const c of cards) {
+    const key = groupKey(c);
+    const list = buckets.get(key);
+    if (list) list.push(c);
+    else buckets.set(key, [c]);
+  }
+
+  const groups: CardGroup[] = [...buckets.entries()].map(([key, members]) => {
+    const sorted = sortByPriority(members);
+    return { key, members: sorted, representative: sorted[0], count: sorted.length };
+  });
+
+  const scoreOf = (c: CommandCard) => (SEVERITY_SCORE[c.severity] ?? 0) + (STATUS_SCORE[c.status] ?? 0);
+  return groups.sort((a, b) => scoreOf(b.representative) - scoreOf(a.representative));
+}
+
+// ---------------------------------------------------------------------------
 // Status labels — plain language for non-technical RTA audience
 // ---------------------------------------------------------------------------
 

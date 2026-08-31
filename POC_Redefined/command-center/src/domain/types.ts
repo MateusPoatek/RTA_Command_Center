@@ -15,6 +15,27 @@
  */
 
 // ---------------------------------------------------------------------------
+// Accounts — live capture partitioning
+//
+// The RTA Live Bridge extension tags every captured card's `lob` field with
+// the account it was captured for ("EPIC" | "ZILLOW" | "CORELOGIC" — see
+// verint_extension/background.js's activeLob). The Command Center uses this
+// same value to keep each account's cards/dispatch history in its own view,
+// so an RTA working one account never sees another account's alerts mixed in.
+// Demo/scenario fixtures use `lob` for a different purpose (sub-queue names
+// like "TLB" or "Fraud ITR") — those are left alone; only cards whose `lob`
+// matches one of these known account ids are partitioned by account.
+// ---------------------------------------------------------------------------
+
+export const ACCOUNTS = ["EPIC", "ZILLOW", "CORELOGIC"] as const;
+export type AccountId = (typeof ACCOUNTS)[number];
+
+/** True if `lob` is one of the known live-capture account ids (not a demo sub-queue name). */
+export function isAccountCard(lob: string | undefined): lob is AccountId {
+  return lob != null && (ACCOUNTS as readonly string[]).includes(lob);
+}
+
+// ---------------------------------------------------------------------------
 // DataClass — data honesty labels
 //
 // Every piece of data in the demo is tagged with one of these four labels.
@@ -679,6 +700,7 @@ export type DiscrepancyType =
   | "clocked_in_not_in_adherence"
   | "in_adherence_no_clock_in"
   | "clocked_out_still_active"
+  | "not_yet_scheduled"
   | "match_ok";
 
 export interface DiscrepancyRow {
@@ -686,11 +708,29 @@ export interface DiscrepancyRow {
   employee: string;
   subgroup: string;
   lob: string;
+  /** Summary of this employee's distinct GTT event types (e.g. "clock_in, daily-communications +2 more") — one row per employee, not per event. */
   gtt_event: string;
+  /** Raw count of GTT event rows this employee generated today. */
+  gtt_event_count: number;
   verint_status: string;
   adherence_pct: number | null;
   ooa_seconds: number | null;
+  /** Minutes in-adherence so far today (cumulative, not a full-shift total). Null if no Verint row. */
+  adherence_minutes: number | null;
+  /** Productive (paid) minutes so far today (cumulative, not a full-shift total). Null if no Verint row. */
+  productive_minutes: number | null;
+  /** Total out-of-adherence minutes today (NOT the single-worst-violation ooa_seconds above). Null if no Verint row. */
+  ooa_minutes: number | null;
+  /** Scheduled (planned) shift length in minutes — the projected/target ceiling for the day. Null if no scheduled bounds. */
+  scheduled_minutes: number | null;
   discrepancy_type: DiscrepancyType;
+}
+
+/** One hour's aggregate across every captured agent — see ReconciliationReport.hourly_attendance. */
+export interface HourlyAttendanceBucket {
+  hour: number;
+  agent_count: number;
+  productive_minutes: number;
 }
 
 export interface ReconciliationMeta {
@@ -699,6 +739,12 @@ export interface ReconciliationMeta {
   sources: string[];
   join_strategy: string;
   ai_context: string;
+  /** False if rapidfuzz wasn't installed when this report was generated — fuzzy name matching was disabled. */
+  fuzzy_match_available?: boolean;
+  earliest_shift_start?: string | null;
+  latest_shift_end?: string | null;
+  /** Raw GTT event-row count before grouping by employee (gtt_total is now the employee count). */
+  gtt_event_rows_total?: number;
 }
 
 export interface ReconciliationReport {
@@ -712,6 +758,10 @@ export interface ReconciliationReport {
   discrepancy_count: number;
   intelligence: string[];
   discrepancies: DiscrepancyRow[];
+  /** Total occurrences of each GTT AUX event type across the whole raw pull (not deduped per employee). */
+  gtt_event_type_counts: Record<string, number>;
+  /** Per-hour aggregation across all captured agents, sorted ascending — feeds the peak-hour and attendance-evolution charts. */
+  hourly_attendance: HourlyAttendanceBucket[];
 }
 
 export interface ReportConfig {
@@ -742,6 +792,7 @@ export const DEFAULT_REPORT_CONFIG: ReportConfig = {
     "verint_status",
     "adherence_pct",
     "ooa_seconds",
+    "productive_minutes",
     "discrepancy_type",
   ],
   recipients: "",

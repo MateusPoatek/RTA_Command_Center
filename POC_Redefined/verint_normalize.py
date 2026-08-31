@@ -38,6 +38,29 @@ RAW_KEYS = (
     "actual_activity",
     "time_in_activity",
     "days_adherence",
+    # Optional — ISO timestamps, present when the capture's actualSchedule
+    # events yielded valid shift bounds (see parse.js's deriveShiftProductive).
+    # Only populated once the agent has generated actual activity.
+    "shift_start",
+    "shift_end",
+    # Optional — ISO timestamps from publishedSchedule.events (the PLANNED
+    # schedule, see parse.js's deriveScheduledShift). Populated for every
+    # agent once the day's schedule is published, regardless of whether
+    # they've started yet — this is the field to check "has this agent's
+    # shift started", not shift_start/shift_end above.
+    "scheduled_shift_start",
+    "scheduled_shift_end",
+    # Optional — raw minute counts (not percentages), from parse.js's
+    # deriveShiftProductive (productive_*_minutes) and deriveAdherence
+    # (adherence_minutes / ooa_minutes). 0 if not available.
+    "productive_paid_minutes",
+    "productive_work_minutes",
+    "adherence_minutes",
+    "ooa_minutes",
+    # JSON-encoded {"<hour>": {"activeMinutes": n, "productiveMinutes": n}, ...}
+    # from parse.js's deriveHourlyBuckets — the one nested field in this
+    # otherwise-flat contract. "{}" if not available.
+    "hourly_buckets_json",
 )
 
 
@@ -79,6 +102,30 @@ def parse_duration(text: str | None) -> int:
         return int(s)
 
     raise ValueError(f"Unparseable duration: {text!r}")
+
+
+def parse_hourly_buckets(text: str | None) -> dict:
+    """Parse the JSON-encoded hourly-buckets blob from parse.js's
+    deriveHourlyBuckets. {} for anything missing/malformed — this is
+    informational (chart data), not the detection signal."""
+    if not text:
+        return {}
+    try:
+        import json
+        data = json.loads(text)
+        return data if isinstance(data, dict) else {}
+    except (TypeError, ValueError):
+        return {}
+
+
+def parse_int(value: object) -> int:
+    """Best-effort int parse for the minute-count fields — 0 for anything
+    missing/unparseable rather than raising, since these are informational
+    (productive/adherence minutes), not the detection signal."""
+    try:
+        return int(value)  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0
 
 
 def parse_pct(text: str | None) -> float:
@@ -137,6 +184,15 @@ def to_agent_row(raw: dict, lob: str, geo: str) -> AgentRow:
         # Alert-relevant duration is Verint's OOA duration.
         duration_seconds=parse_duration(raw.get("out_of_adherence")),
         adherence_pct=parse_pct(raw.get("days_adherence")),
+        shift_start_iso=(raw.get("shift_start") or "").strip(),
+        shift_end_iso=(raw.get("shift_end") or "").strip(),
+        scheduled_start_iso=(raw.get("scheduled_shift_start") or "").strip(),
+        scheduled_end_iso=(raw.get("scheduled_shift_end") or "").strip(),
+        productive_paid_minutes=parse_int(raw.get("productive_paid_minutes")),
+        productive_work_minutes=parse_int(raw.get("productive_work_minutes")),
+        adherence_minutes=parse_int(raw.get("adherence_minutes")),
+        ooa_minutes=parse_int(raw.get("ooa_minutes")),
+        hourly_buckets=parse_hourly_buckets(raw.get("hourly_buckets_json")),
     )
 
 

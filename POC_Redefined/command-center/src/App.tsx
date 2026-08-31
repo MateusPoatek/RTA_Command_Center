@@ -44,6 +44,7 @@ import type { DispatchEntry } from "./domain/scenario_types";
 
 // Domain
 import type {
+  AccountId,
   AuditEvent,
   AutoAction,
   CardAction,
@@ -53,7 +54,7 @@ import type {
   ReconciliationReport,
   ReportConfig,
 } from "./domain/types";
-import { DEFAULT_REPORT_CONFIG } from "./domain/types";
+import { ACCOUNTS, DEFAULT_REPORT_CONFIG, isAccountCard } from "./domain/types";
 
 // Shared
 import { formatChannel } from "./shared/channelConfig";
@@ -82,6 +83,11 @@ import { AutoActionToast }    from "./components/AutoActionToast";
 
 // Utils
 import { calculateShiftScore } from "./utils/score";
+
+// A single dispatch batch never exceeds this many alerts, even if more are
+// queued — flushBatch() splits a large queue into several same-size-or-smaller
+// batches (each its own cycle number) instead of one unbounded burst.
+const MAX_BATCH_SIZE = 25;
 
 // ---------------------------------------------------------------------------
 // Learning signal generator — called after every card action
@@ -166,6 +172,47 @@ function App() {
   const [cards,        setCards]        = useState<CommandCard[]>(initialCards);
   const [focusedCardId, setFocusedCardId] = useState<string | null>(null);
   const [liveDemo,     setLiveDemo]     = useState(false);
+
+  // -- Active account (per-account dedicated area) ----------------------------
+  // The extension tags live-captured cards' `lob` with the account name
+  // ("EPIC" | "ZILLOW" | "CORELOGIC"). Everything rendered — Priority Feed,
+  // Floor View, dispatch history — is filtered to the active account so an
+  // RTA working one account never sees another account's alerts mixed in.
+  // Demo/scenario cards use `lob` for sub-queue names instead (see
+  // isAccountCard below) and are unaffected by this filter.
+  const [activeAccount, setActiveAccount] = useState<AccountId>(() => {
+    const saved = localStorage.getItem("rta.activeAccount");
+    return (ACCOUNTS as readonly string[]).includes(saved ?? "") ? (saved as AccountId) : ACCOUNTS[0];
+  });
+  useEffect(() => {
+    localStorage.setItem("rta.activeAccount", activeAccount);
+  }, [activeAccount]);
+
+  // -- Alert dispatch batching (COPC) -----------------------------------------
+  // "approve-send" no longer dispatches instantly — it queues the card
+  // (status "ready-to-send") and flushBatch() below releases everything
+  // queued, in one go, on a configurable interval (default 15 min). This is
+  // what keeps GChat/Teams from getting one message per agent per violation.
+  const [batchIntervalMinutes, setBatchIntervalMinutes] = useState<number>(() => {
+    const saved = Number(localStorage.getItem("rta.batchIntervalMinutes"));
+    return saved > 0 ? saved : 15;
+  });
+  useEffect(() => {
+    localStorage.setItem("rta.batchIntervalMinutes", String(batchIntervalMinutes));
+  }, [batchIntervalMinutes]);
+  const [lastBatchAt, setLastBatchAt] = useState<number>(() => Date.now());
+  const [secondsUntilNextBatch, setSecondsUntilNextBatch] = useState<number>(batchIntervalMinutes * 60);
+  const batchSeqRef = useRef(0); // -> DispatchEntry.cycle, shared by every alert in one flush
+  const pendingSentByRef = useRef<Map<string, "rta" | "ai">>(new Map()); // cardId -> who approved it, until flush
+
+  // -- Per-shift dedup ("up to speed") -----------------------------------------
+  // A recapture can re-surface the same underlying violation (new raw card id)
+  // before it's resolved server-side. Once a violation has been acted on this
+  // shift, it must not resurrect as a fresh "needs-review" card.
+  const actionedKeysRef = useRef<Set<string>>(new Set());
+  function cardIdentityKey(c: CommandCard): string {
+    return `${c.lob ?? "—"}:${c.rule?.id ?? c.title}:${c.agent?.id ?? c.agent?.name ?? c.id}`;
+  }
 
   // -- Autonomous AI mode ----------------------------------------------------
   const [autoMode,        setAutoMode]        = useState(false);
@@ -258,6 +305,7 @@ function App() {
     cards,
     setCards,
     onAutoAction: handleAutoAction,
+    activeAccount,
   });
 
   // Live cards pushed by the RTA Live Bridge browser extension (Verint -> here).
@@ -265,11 +313,43 @@ function App() {
   // and flips on a "LIVE" banner so it's obvious the data is real.
   const [liveBridgeActive, setLiveBridgeActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
-  const [verintRoster, setVerintRoster] = useState<VerintRosterRow[]>([]);
+  // Persisted so a page reload (or a dev-server HMR full-reload) doesn't
+  // silently wipe the captured roster and make the next "Report" click send
+  // verint_rows: [] — that happened repeatedly and produced a GTT-only report
+  // with no explanation, since the UI still showed "Report" as available.
+  const [verintRoster, setVerintRoster] = useState<VerintRosterRow[]>(() => {
+    try {
+      const saved = localStorage.getItem("rta.verintRoster");
+      return saved ? JSON.parse(saved) : [];
+    } catch {
+      return [];
+    }
+  });
+  useEffect(() => {
+    try {
+      if (verintRoster.length > 0) {
+        localStorage.setItem("rta.verintRoster", JSON.stringify(verintRoster));
+      }
+    } catch {
+      /* localStorage full/unavailable — roster still works for this session */
+    }
+  }, [verintRoster]);
   // Which surface fills the left panel: the priority feed, or the spatial Floor View.
   const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
   useExtensionBridge((liveCards, syncedAt, roster) => {
-    setCards(liveCards);
+    // Merge instead of blind-replace: a violation already actioned this shift
+    // (sent/queued/suppressed/etc.) must not resurrect as "needs-review" just
+    // because a recapture still sees it, even under a new raw card id.
+    setCards((prevCards) => {
+      const prevByKey = new Map(prevCards.map((c) => [cardIdentityKey(c), c]));
+      return liveCards.map((incoming) => {
+        const key = cardIdentityKey(incoming);
+        if (actionedKeysRef.current.has(key)) {
+          return prevByKey.get(key) ?? incoming;
+        }
+        return incoming;
+      });
+    });
     setLiveBridgeActive(true);
     setLastSynced(syncedAt ?? new Date().toISOString());
     if (roster.length > 0) setVerintRoster(roster);
@@ -354,10 +434,16 @@ function App() {
   /**
    * Maps a CardAction to the resulting CardStatus.
    * This is the single place that defines what happens to a card after an action.
+   *
+   * "approve-send" resolves to "ready-to-send", not "sent" — the alert is
+   * queued for the next dispatch batch (see flushBatch), which is what
+   * actually creates the DispatchEntry and moves it to "sent". Only
+   * "generate-report" (the Report tab's own action, unrelated to GChat/Teams
+   * dispatch) still resolves straight to "sent".
    */
   function resolveStatus(action: CardAction): CommandCard["status"] {
     switch (action) {
-      case "approve-send":
+      case "approve-send":                 return "ready-to-send";
       case "generate-report":              return "sent";
       case "suppress":                     return "suppressed";
       case "escalate-supervisor":
@@ -369,6 +455,10 @@ function App() {
     }
   }
 
+  const HANDLED_STATUSES: CommandCard["status"][] = [
+    "ready-to-send", "sent", "suppressed", "resolved", "escalated", "added-to-handoff",
+  ];
+
   // ---------------------------------------------------------------------------
   // Event handlers
   // ---------------------------------------------------------------------------
@@ -378,6 +468,12 @@ function App() {
     setShiftClosed(false);
     setAiStatus("Watching");
     setBriefingOpen(false);
+    // Per-shift dedup + batching reset — a new shift starts with a clean slate.
+    actionedKeysRef.current = new Set();
+    batchSeqRef.current = 0;
+    pendingSentByRef.current = new Map();
+    setLastBatchAt(Date.now());
+    setSecondsUntilNextBatch(batchIntervalMinutes * 60);
     setAgentLog([
       "[AI] Watch mode active — monitoring 248 agents across 6 LOBs",
       "[AI] Rules engine loaded — 6 active thresholds",
@@ -406,8 +502,10 @@ function App() {
 
     const audit = appendAudit(
       action === "approve-send" || action === "generate-report" ? "ai" : "rta",
-      action === "approve-send" ? "Send alert" : action,
-      `${action} on "${card.title}".`,
+      action === "approve-send" ? "Queue alert" : action,
+      action === "approve-send"
+        ? `Queued "${card.title}" for the next dispatch batch.`
+        : `${action} on "${card.title}".`,
       card.dataClass,
     );
 
@@ -422,21 +520,17 @@ function App() {
     const signal = buildLearningSignal(card, action, learningSignals);
     setLearningSignals((prev) => [...prev, signal]);
 
-    // Dispatch log on "Send alert"
+    // Per-shift dedup memory: once a violation is handled (queued, sent,
+    // suppressed, etc.) it must not resurface as "needs-review" on a recapture.
+    if (HANDLED_STATUSES.includes(nextStatus)) {
+      actionedKeysRef.current.add(cardIdentityKey(card));
+    }
+
+    // "approve-send" queues the alert for the next dispatch batch instead of
+    // sending immediately — see flushBatch(). Remember who approved it so the
+    // DispatchEntry created at flush time still has the right attribution.
     if (action === "approve-send") {
-      const entry: DispatchEntry = {
-        id:             `dispatch-${Date.now()}`,
-        timestamp:      new Date().toISOString(),
-        cycle:          dispatchLog.length + 1,
-        agent:          card.agent?.name ?? card.title,
-        lob:            card.lob ?? "—",
-        channel:        card.selectedChannel ?? "audit-only",
-        message:        card.draftMessage ?? `Alert sent for ${card.title}.`,
-        escalationLevel: "first-alert",
-        status:         "sent",
-        sentBy,
-      };
-      setDispatchLog((prev) => [...prev, entry]);
+      pendingSentByRef.current.set(card.id, sentBy);
     }
 
     // Dispatch log on escalation
@@ -451,7 +545,10 @@ function App() {
       const entry: DispatchEntry = {
         id:             `dispatch-${Date.now()}`,
         timestamp:      new Date().toISOString(),
-        cycle:          dispatchLog.length + 1,
+        // Tag with the CURRENT (not-yet-flushed) batch cycle — one ahead of
+        // batchSeqRef, so it never collides with an already-flushed batch's
+        // cycle number, and merges into that batch's rollup once it flushes.
+        cycle:          batchSeqRef.current + 1,
         agent:          card.agent?.name ?? card.title,
         lob:            card.lob ?? "—",
         channel:        escalationTarget,
@@ -474,12 +571,102 @@ function App() {
     if (action === "add-to-handoff") setHandoffGenerated(true);
 
     const terminalStatuses: CommandCard["status"][] = [
-      "sent", "suppressed", "resolved", "escalated", "added-to-handoff",
+      "ready-to-send", "sent", "suppressed", "resolved", "escalated", "added-to-handoff",
     ];
     if (terminalStatuses.includes(nextStatus) && focusedCardId === cardId) {
       setFocusedCardId(null);
     }
   }
+
+  /** Applies one action to every card in a group at once (grouped Priority Feed cards). */
+  function runGroupAction(action: CardAction, cardIds: string[]): void {
+    cardIds.forEach((id) => runCardAction(action, id));
+  }
+
+  /**
+   * Releases every "ready-to-send" card as one or more dispatch batches:
+   * groups them by account first (a batch never mixes accounts — keeps the
+   * per-account dispatch history rollup clean), then splits each account's
+   * group into chunks of at most MAX_BATCH_SIZE. Each chunk gets its own
+   * `cycle` number and DispatchEntry set (so the dispatch history can roll
+   * them up as "Batch #N"), and moves those cards to "sent". This — not
+   * runCardAction's approve-send — is what actually delivers alerts to
+   * GChat/Teams, on the configured interval instead of instantly per card,
+   * and never as one unbounded burst.
+   */
+  function flushBatch(): void {
+    setCards((prevCards) => {
+      const ready = prevCards.filter((c) => c.status === "ready-to-send");
+      if (ready.length === 0) return prevCards;
+
+      const byAccount = new Map<string, CommandCard[]>();
+      for (const c of ready) {
+        const key = c.lob ?? "—";
+        const list = byAccount.get(key);
+        if (list) list.push(c);
+        else byAccount.set(key, [c]);
+      }
+
+      const allEntries: DispatchEntry[] = [];
+      const sentIds = new Set<string>();
+
+      for (const group of byAccount.values()) {
+        for (let i = 0; i < group.length; i += MAX_BATCH_SIZE) {
+          const chunk = group.slice(i, i + MAX_BATCH_SIZE);
+          batchSeqRef.current += 1;
+          const cycle = batchSeqRef.current;
+          const flushedAt = new Date().toISOString();
+
+          for (const card of chunk) {
+            allEntries.push({
+              id:             `dispatch-${Date.now()}-${card.id}`,
+              timestamp:      flushedAt,
+              cycle,
+              agent:          card.agent?.name ?? card.title,
+              lob:            card.lob ?? "—",
+              channel:        card.selectedChannel ?? "audit-only",
+              message:        card.draftMessage ?? `Alert sent for ${card.title}.`,
+              escalationLevel: "first-alert",
+              status:         "sent",
+              sentBy:         pendingSentByRef.current.get(card.id) ?? "rta",
+            });
+            pendingSentByRef.current.delete(card.id);
+            sentIds.add(card.id);
+          }
+
+          appendAudit(
+            "ai",
+            "Batch dispatch",
+            `Batch #${cycle}: ${chunk.length} alert(s) sent.`,
+            "simulated",
+          );
+        }
+      }
+
+      setDispatchLog((prev) => [...prev, ...allEntries]);
+      return prevCards.map((c) => (sentIds.has(c.id) ? { ...c, status: "sent" as const } : c));
+    });
+    setLastBatchAt(Date.now());
+    setSecondsUntilNextBatch(batchIntervalMinutes * 60);
+  }
+
+  // Keep a stable ref to the latest flushBatch/batch-interval so the interval
+  // effect below never needs to tear down and restart the timer mid-countdown.
+  const flushBatchRef = useRef(flushBatch);
+  flushBatchRef.current = flushBatch;
+
+  // Batch countdown + auto-flush — ticks every second; flushes when the
+  // configured interval elapses. Wall-clock relative to lastBatchAt (not
+  // aligned to :00/:15/:30/:45) so the interval is genuinely configurable.
+  useEffect(() => {
+    const id = setInterval(() => {
+      const elapsedMs = Date.now() - lastBatchAt;
+      const remaining = Math.max(0, batchIntervalMinutes * 60 - Math.floor(elapsedMs / 1000));
+      setSecondsUntilNextBatch(remaining);
+      if (remaining === 0) flushBatchRef.current();
+    }, 1000);
+    return () => clearInterval(id);
+  }, [lastBatchAt, batchIntervalMinutes]);
 
   function closeShift(): void {
     setClosePanelOpen(true);
@@ -496,6 +683,17 @@ function App() {
   const isOutageActive = cards.some(
     (c) => c.type === "exception" && c.rule?.id === "tech_cluster_detection" && !["resolved", "sent"].includes(c.status),
   );
+
+  // -- Per-account view: everything rendered is scoped to activeAccount ------
+  // Cards/dispatch entries tagged with one of the known account ids are
+  // partitioned; anything else (demo/scenario data) is shown regardless of
+  // which account is selected, so the scenario picker keeps working as-is.
+  const visibleCards = cards.filter((c) => !isAccountCard(c.lob) || c.lob === activeAccount);
+  const visibleDispatchLog = dispatchLog.filter((e) => !isAccountCard(e.lob) || e.lob === activeAccount);
+  const queuedForBatchCount = visibleCards.filter((c) => c.status === "ready-to-send").length;
+  const handledThisShiftCount = visibleCards.filter((c) =>
+    HANDLED_STATUSES.includes(c.status) && c.status !== "ready-to-send",
+  ).length;
 
   // ---------------------------------------------------------------------------
   // Render
@@ -533,6 +731,7 @@ function App() {
         autoSentCount={autoSentCount}
         captureRunning={captureRunning}
         activeScenarioId={activeScenarioId}
+        activeAccount={activeAccount}
         isOutageActive={isOutageActive}
         onStart={startShift}
         onClose={closeShift}
@@ -541,6 +740,7 @@ function App() {
         onCapture={() => setCaptureConfigOpen(true)}
         onOpenBriefing={() => setBriefingOpen(true)}
         onScenarioChange={(id) => setActiveScenarioId(id)}
+        onAccountChange={(id) => setActiveAccount(id)}
         hasReport={reportPayload !== null}
         onGenerateReport={async () => {
           const today = new Date().toISOString().slice(0, 10);
@@ -617,7 +817,7 @@ function App() {
       )}
 
       <HealthStrip
-        cards={cards}
+        cards={visibleCards}
         lobData={lobHealth}
         aiHandledCount={aiHandledCount}
         autoMode={autoMode}
@@ -649,7 +849,7 @@ function App() {
           </div>
           {mainView === "floor" ? (
             <FloorView
-              cards={cards}
+              cards={visibleCards}
               lobData={lobHealth}
               onAgentClick={(cardId) => {
                 setFocusedCardId(cardId); // promote the card in the feed (radar finds, card resolves)
@@ -658,23 +858,31 @@ function App() {
             />
           ) : (
             <PriorityFeed
-              cards={cards}
+              cards={visibleCards}
               newCardIds={newCardIds}
               focusedCardId={focusedCardId}
               onAction={(action, cardId) => runCardAction(action, cardId)}
+              onGroupAction={(action, cardIds) => runGroupAction(action, cardIds)}
               onFocus={(cardId) => setFocusedCardId(cardId)}
               onShowBoard={() => {/* future: full kanban toggle */}}
+              activeAccount={activeAccount}
+              handledThisShiftCount={handledThisShiftCount}
+              batchIntervalMinutes={batchIntervalMinutes}
+              onBatchIntervalChange={setBatchIntervalMinutes}
+              queuedForBatchCount={queuedForBatchCount}
+              secondsUntilNextBatch={secondsUntilNextBatch}
+              onFlushNow={flushBatch}
             />
           )}
         </div>
 
         <div className="workspace__right">
           <ProcessView
-            cards={cards}
+            cards={visibleCards}
             lobData={lobHealth}
             reports={reports}
             attendanceReports={activeScenario.reports.attendanceReports}
-            dispatchLog={dispatchLog}
+            dispatchLog={visibleDispatchLog}
             onAction={(action, cardId) => runCardAction(action, cardId)}
             reportPayload={reportPayload}
             reportConfig={reportConfig}
@@ -719,6 +927,7 @@ function App() {
       {closePanelOpen && (
         <CloseShiftPanel
           cards={cards}
+          dispatchLog={dispatchLog}
           shiftScore={shiftScore}
           aiReportGenerated={aiReportGenerated}
           handoffGenerated={handoffGenerated}

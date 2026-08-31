@@ -23,6 +23,8 @@ let captureLog = [];              // metadata only: [{ ts, count }] — no PII
 let captureFrequencySeconds = 0;  // hub frequency; also drives the heartbeat alarm
 let lastProbeResult = null;       // Floor-View gate probe result (ids/counts only, no PII)
 let autoPush = false;             // false = accumulate while paging, push on demand; true = push every capture
+let activeLob = "EPIC";           // which account's Verint filter is currently being captured (label only)
+let captureProgress = null;       // Full Capture progress: { phase, done, total } — null when idle/never run
 
 // ---- persistence: survive SW eviction without disk PII --------------------
 // chrome.storage.session is in-memory (RAM), cleared on browser close. We store
@@ -32,7 +34,7 @@ const STATE_KEY = "rtaState";
 const HEARTBEAT = "rta-heartbeat";
 
 function snapshot() {
-  return { latestCards, latestRoster, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult, autoPush };
+  return { latestCards, latestRoster, lastSyncedAt, captureLog, captureFrequencySeconds, lastProbeResult, autoPush, activeLob, captureProgress };
 }
 function persist() {
   try {
@@ -55,6 +57,8 @@ function hydrate() {
           captureFrequencySeconds = s.captureFrequencySeconds || 0;
           lastProbeResult = s.lastProbeResult || null;
           autoPush = !!s.autoPush;
+          activeLob = s.activeLob || "EPIC";
+          captureProgress = s.captureProgress || null;
           // restore the toolbar badge after a cold wake
           try {
             chrome.action.setBadgeText({ text: latestCards.length ? String(latestCards.length) : "" });
@@ -120,6 +124,16 @@ function requestProbe() {
   });
 }
 
+// Ask the Verint tab(s) to run a one-pass Full Capture (census + targeted
+// pulls, no manual paging) — see inject.js's runFullCapture().
+function requestFullCapture() {
+  chrome.tabs.query({ url: "*://*.verintcloudservices.com/*" }, (tabs) => {
+    for (const t of tabs) {
+      chrome.tabs.sendMessage(t.id, { type: "full-capture" }, () => void chrome.runtime.lastError);
+    }
+  });
+}
+
 function pushToCommandCenter() {
   chrome.tabs.query({ url: "http://localhost:5173/*" }, (tabs) => {
     for (const t of tabs) {
@@ -135,12 +149,12 @@ function pushToCommandCenter() {
 function rebuild() {
   const captureData = { calendarFilters: captures.calendarFilters, workResources: captures.workResources };
   try {
-    latestCards = self.RTAParse.buildCards(captureData, { lob: "EPIC", target: 200 });
+    latestCards = self.RTAParse.buildCards(captureData, { lob: activeLob, target: Infinity }); // uncapped
   } catch (e) {
     latestCards = [];
   }
   try {
-    latestRoster = self.RTAParse.extractRoster(captureData, { lob: "EPIC" });
+    latestRoster = self.RTAParse.extractRoster(captureData, { lob: activeLob });
   } catch (e) {
     latestRoster = [];
   }
@@ -205,6 +219,21 @@ function handleMessage(msg, sendResponse) {
     // no response needed
   } else if (msg.type === "get-probe-result") {
     sendResponse(lastProbeResult); // null until a run completes
+  } else if (msg.type === "run-full-capture") {
+    // Popup "Full Capture" → tell the Verint tab(s) to run the one-pass capture.
+    // Real responses stream back as ordinary "verint-response" messages (same
+    // path as passive paging), so no separate result-collection is needed here
+    // — only progress, for the popup to show while it runs.
+    captureProgress = { phase: "starting", done: 0, total: null };
+    persist();
+    requestFullCapture();
+    sendResponse({ ok: true });
+  } else if (msg.type === "capture-progress") {
+    captureProgress = { phase: msg.phase, done: msg.done, total: msg.total };
+    persist();
+    // no response needed
+  } else if (msg.type === "get-capture-progress") {
+    sendResponse(captureProgress); // null until a run has started
   } else if (msg.type === "set-autopush") {
     autoPush = !!msg.on;
     persist();
@@ -215,6 +244,12 @@ function handleMessage(msg, sendResponse) {
     persist();
     applyHeartbeat(); // (re)arm or clear the heartbeat alarm to match
     sendResponse({ ok: true, seconds: captureFrequencySeconds });
+  } else if (msg.type === "set-lob") {
+    activeLob = (msg.lob || "EPIC").trim() || "EPIC";
+    rebuild(); // re-label + re-derive cards/roster from the current capture under the new LOB
+    sendResponse({ ok: true, lob: activeLob });
+  } else if (msg.type === "get-lob") {
+    sendResponse({ lob: activeLob });
   } else if (msg.type === "reset") {
     captures.calendarFilters = [];
     captures.workResources = [];

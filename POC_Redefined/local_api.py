@@ -39,6 +39,21 @@ from starlette.routing import Route
 BASE_DIR = Path(__file__).parent
 sys.path.insert(0, str(BASE_DIR))
 
+# Surfaced at startup (not just buried in the report JSON) because a missing
+# rapidfuzz silently disables fuzzy name matching with no exception raised —
+# the report just under-matches and looks like a real attendance problem.
+# Also a reminder that this process must be RESTARTED to pick up any change
+# to gtt_adapter.py / gtt_verint_reconciler.py — their `from X import Y`
+# happens inside generate_report() per-request, but Python only reads a
+# module's source once per process (sys.modules caches it), so editing those
+# files while this server keeps running has no effect until restart.
+try:
+    import rapidfuzz  # noqa: F401
+    print(f"[local-api] rapidfuzz available (v{rapidfuzz.__version__}) — fuzzy name matching enabled")
+except ImportError:
+    print("[local-api] WARNING: rapidfuzz NOT installed — fuzzy name matching disabled, "
+          "join relies on exact surname match only. `pip install rapidfuzz` and restart.")
+
 
 async def generate_report(request: Request) -> JSONResponse:
     try:

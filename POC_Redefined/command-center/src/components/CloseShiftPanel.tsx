@@ -19,6 +19,8 @@
  */
 
 import type { CommandCard } from "../domain/types";
+import type { DispatchEntry } from "../domain/scenario_types";
+import { groupByCycle } from "../utils/dispatchHelpers";
 import { dataClassLabels } from "./ui/DataBadge";
 
 function CheckRow({ checked, label }: { checked: boolean; label: string }) {
@@ -32,6 +34,7 @@ function CheckRow({ checked, label }: { checked: boolean; label: string }) {
 
 interface CloseShiftPanelProps {
   cards: CommandCard[];
+  dispatchLog: DispatchEntry[];
   shiftScore: number;
   aiReportGenerated: boolean;
   handoffGenerated: boolean;
@@ -40,14 +43,18 @@ interface CloseShiftPanelProps {
 
 export function CloseShiftPanel({
   cards,
+  dispatchLog,
   shiftScore,
   aiReportGenerated,
   handoffGenerated,
   onClose,
 }: CloseShiftPanelProps) {
+  const addedToHandoff = cards.filter((c) => c.status === "added-to-handoff");
   const unresolved = cards.filter(
-    (c) => !["resolved", "sent", "suppressed"].includes(c.status),
+    (c) => !["resolved", "sent", "suppressed", "added-to-handoff"].includes(c.status),
   );
+  const batches = groupByCycle(dispatchLog);
+  const totalDispatched = dispatchLog.filter((e) => e.status === "sent").length;
 
   return (
     <div className="modal-backdrop">
@@ -70,21 +77,67 @@ export function CloseShiftPanel({
             label="All operational cards resolved"
           />
           <CheckRow
+            checked={batches.length > 0}
+            label={`Alert batches dispatched this shift (${totalDispatched} alerts, ${batches.length} batch${batches.length === 1 ? "" : "es"})`}
+          />
+          <CheckRow
             checked={shiftScore >= 75}
             label={`Shift score acceptable (${shiftScore}%)`}
           />
         </div>
 
+        <h3>Batches Sent This Shift</h3>
+        <div className="handoff-list">
+          {batches.length === 0 ? (
+            <p className="handoff-empty">No alert batches dispatched yet.</p>
+          ) : (
+            batches.map((batch) => (
+              <div key={batch.cycle}>
+                <strong>Batch #{batch.cycle}</strong>
+                <span>
+                  {new Date(batch.latestTimestamp).toLocaleTimeString()} ·{" "}
+                  {batch.entries.filter((e) => e.status === "sent").length} sent
+                  {batch.entries.some((e) => e.status === "escalated")
+                    ? ` · ${batch.entries.filter((e) => e.status === "escalated").length} escalated`
+                    : ""}
+                  {" · "}
+                  {[...new Set(batch.entries.map((e) => e.lob))].join(", ")}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
+        <h3>Added to Handoff</h3>
+        <div className="handoff-list">
+          {addedToHandoff.length === 0 ? (
+            <p className="handoff-empty">Nothing explicitly added to handoff.</p>
+          ) : (
+            addedToHandoff.map((card) => (
+              <div key={card.id}>
+                <strong>{card.title}</strong>
+                <span>
+                  {card.lane} · {dataClassLabels[card.dataClass]}
+                </span>
+              </div>
+            ))
+          )}
+        </div>
+
         <h3>Unresolved Items</h3>
         <div className="handoff-list">
-          {unresolved.map((card) => (
-            <div key={card.id}>
-              <strong>{card.title}</strong>
-              <span>
-                {card.status} · {card.lane} · {dataClassLabels[card.dataClass]}
-              </span>
-            </div>
-          ))}
+          {unresolved.length === 0 ? (
+            <p className="handoff-empty">Nothing unresolved.</p>
+          ) : (
+            unresolved.map((card) => (
+              <div key={card.id}>
+                <strong>{card.title}</strong>
+                <span>
+                  {card.status} · {card.lane} · {dataClassLabels[card.dataClass]}
+                </span>
+              </div>
+            ))
+          )}
         </div>
       </section>
     </div>

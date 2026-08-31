@@ -11,6 +11,7 @@ import { useState } from "react";
 import type { ReconciliationReport, DiscrepancyRow, DiscrepancyType } from "../domain/types";
 import { exportReportXlsx, exportReportPdf } from "../utils/export";
 import { ReportPreview } from "./ReportPreview";
+import { ReportChartsPanel } from "./ReportChartsPanel";
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -20,6 +21,7 @@ const TYPE_LABELS: Record<DiscrepancyType, string> = {
   clocked_in_not_in_adherence: "No Verint record",
   in_adherence_no_clock_in:    "No GTT clock-in",
   clocked_out_still_active:    "Ghost session",
+  not_yet_scheduled:           "Shift not started",
   match_ok:                    "OK",
 };
 
@@ -27,6 +29,7 @@ const TYPE_COLOURS: Record<DiscrepancyType, string> = {
   clocked_in_not_in_adherence: "#ef4444",   // red
   in_adherence_no_clock_in:    "#f59e0b",   // amber
   clocked_out_still_active:    "#8b5cf6",   // violet
+  not_yet_scheduled:           "#64748b",   // slate — informational, not a real discrepancy
   match_ok:                    "#22c55e",   // green
 };
 
@@ -40,6 +43,13 @@ function fmtOoa(sec: number | null): string {
 
 function fmtAdh(pct: number | null): string {
   return pct !== null ? `${pct.toFixed(0)}%` : "—";
+}
+
+function fmtMinutesAsHm(min: number | null): string {
+  if (min === null || min <= 0) return "—";
+  const h = Math.floor(min / 60);
+  const m = Math.round(min % 60);
+  return h > 0 ? `${h}h ${m}m` : `${m}m`;
 }
 
 type SortKey = keyof DiscrepancyRow;
@@ -117,18 +127,36 @@ function DiscrepancyTable({
     "clocked_in_not_in_adherence",
     "in_adherence_no_clock_in",
     "clocked_out_still_active",
+    "not_yet_scheduled",
     "match_ok",
   ];
+
+  // Counts per type — computed from the FULL (unfiltered) row set, always
+  // reflecting all rows so every tab shows its own count regardless of which
+  // filter is currently active (see how many of each category exist without
+  // having to click through each tab one by one).
+  const typeCounts: Record<DiscrepancyType | "all", number> = {
+    all: rows.length,
+    clocked_in_not_in_adherence: 0,
+    in_adherence_no_clock_in: 0,
+    clocked_out_still_active: 0,
+    not_yet_scheduled: 0,
+    match_ok: 0,
+  };
+  for (const r of rows) typeCounts[r.discrepancy_type] += 1;
 
   const colLabels: Record<keyof DiscrepancyRow, string> = {
     workday_id: "Workday ID",
     employee: "Employee",
     subgroup: "Subgroup",
     lob: "LOB",
-    gtt_event: "GTT Event",
+    gtt_event: "GTT Events",
+    gtt_event_count: "# Events",
     verint_status: "Verint Status",
     adherence_pct: "Adh %",
     ooa_seconds: "OOA",
+    adherence_minutes: "Adh Min",
+    productive_minutes: "Productive",
     discrepancy_type: "Type",
   };
 
@@ -142,6 +170,7 @@ function DiscrepancyTable({
             onClick={() => setFilter(t)}
           >
             {t === "all" ? "All" : TYPE_LABELS[t]}
+            <span className="grd-filter-btn__count">{typeCounts[t]}</span>
           </button>
         ))}
         <span className="grd-filter-count">{sorted.length} rows</span>
@@ -167,7 +196,7 @@ function DiscrepancyTable({
             {sorted.map((row, i) => (
               <tr
                 key={i}
-                className={`grd-tr${row.discrepancy_type !== "match_ok" ? " grd-tr--issue" : ""}`}
+                className={`grd-tr${!["match_ok", "not_yet_scheduled"].includes(row.discrepancy_type) ? " grd-tr--issue" : ""}`}
               >
                 {visibleCols.map((col) => (
                   <td key={col} className="grd-td">
@@ -177,6 +206,10 @@ function DiscrepancyTable({
                       fmtOoa(row.ooa_seconds)
                     ) : col === "adherence_pct" ? (
                       fmtAdh(row.adherence_pct)
+                    ) : col === "adherence_minutes" ? (
+                      fmtMinutesAsHm(row.adherence_minutes)
+                    ) : col === "productive_minutes" ? (
+                      fmtMinutesAsHm(row.productive_minutes)
                     ) : (
                       String(row[col] ?? "—")
                     )}
@@ -219,6 +252,7 @@ interface GttReportDashboardProps {
 
 export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: GttReportDashboardProps) {
   const [showPreview, setShowPreview] = useState(false);
+  const [view, setView] = useState<"table" | "charts">("table");
 
   return (
     <div className="grd">
@@ -255,8 +289,33 @@ export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: Gtt
       {/* Summary banner */}
       <SummaryBanner report={report} />
 
-      {/* Discrepancy table */}
-      <DiscrepancyTable rows={report.discrepancies} visibleCols={visibleColumns} />
+      {/* Table / Charts toggle — same visual pattern as the Priority Feed / Floor View toggle */}
+      <div className="left-view-toggle" role="tablist">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "table"}
+          className={`lvt-btn${view === "table" ? " lvt-btn--active" : ""}`}
+          onClick={() => setView("table")}
+        >
+          Table
+        </button>
+        <button
+          type="button"
+          role="tab"
+          aria-selected={view === "charts"}
+          className={`lvt-btn${view === "charts" ? " lvt-btn--active" : ""}`}
+          onClick={() => setView("charts")}
+        >
+          Charts
+        </button>
+      </div>
+
+      {view === "table" ? (
+        <DiscrepancyTable rows={report.discrepancies} visibleCols={visibleColumns} />
+      ) : (
+        <ReportChartsPanel report={report} />
+      )}
 
       {/* Intelligence */}
       <IntelligencePanel bullets={report.intelligence} />
