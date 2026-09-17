@@ -1,8 +1,0 @@
-# Core document parsing
-python-docx==1.1.2
-
-# Video scene detection (includes OpenCV dependency)
-scenedetect[opencv]==0.6.4
-
-# FFmpeg Python wrapper (requires FFmpeg CLI: brew install ffmpeg)
-ffmpeg-python==0.2.0
