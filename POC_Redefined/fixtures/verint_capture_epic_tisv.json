@@ -1,0 +1,124 @@
+{
+  "captured_at": "2026-06-04T16:10:36-03:00",
+  "source_url": "https://wfo.a87.verintcloudservices.com",
+  "view": "BPO_Global_EPIC_TISV — Player Support",
+  "lob": "EPIC",
+  "geo": "El Salvador",
+  "cycle": 1,
+  "persistence_map": {},
+  "note": "Parsed from netcap_20260604T1610360300 — BPO_Global_EPIC_TISV_Player Support. 123 violations across 50 agents.",
+  "rows": [
+    {
+      "name": "Agent 01",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_New ticket",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 02",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_New ticket",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 03",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 04",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_New ticket",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 05",
+      "scheduled_activity": "EPIC_Short Break 1",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_New ticket",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 06",
+      "scheduled_activity": "EPIC_Daily huddle",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_New ticket",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 07",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 08",
+      "scheduled_activity": "No Activity",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_Daily Communication",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 09",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 10",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 11",
+      "scheduled_activity": "EPIC_New ticket",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "EPIC_Short Break 1",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 12",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 13",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    },
+    {
+      "name": "Agent 14",
+      "scheduled_activity": "TIE_Project Specific Activity 7 differred",
+      "out_of_adherence": "0:00:00",
+      "actual_activity": "Deleted Timeline",
+      "time_in_activity": "0:00:00",
+      "days_adherence": "85%"
+    }
+  ]
+}

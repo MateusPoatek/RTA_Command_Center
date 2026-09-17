@@ -298,6 +298,14 @@ export function CopilotPanel({
               <span className="copilot-adherence-label">
                 {card.agent.adherenceInPercent}% in-adherence
               </span>
+              {(card.agent.shiftSpanMinutes != null || card.agent.productivePaidMinutes != null) && (
+                <p className="copilot-agent-context__detail">
+                  {card.agent.shiftSpanMinutes != null &&
+                    `Shift ${Math.floor(card.agent.shiftSpanMinutes / 60)}h ${card.agent.shiftSpanMinutes % 60}m`}
+                  {card.agent.productivePaidMinutes != null &&
+                    ` · Productive ${Math.floor(card.agent.productivePaidMinutes / 60)}h ${card.agent.productivePaidMinutes % 60}m (paid)`}
+                </p>
+              )}
             </div>
           )}
 

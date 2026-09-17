@@ -28,6 +28,7 @@ interface CommandBarProps {
   captureRunning: boolean;
   activeScenarioId: ScenarioId;
   isOutageActive?: boolean;
+  hasReport?: boolean;
   onStart: () => void;
   onClose: () => void;
   onToggleLiveDemo: () => void;
@@ -35,6 +36,7 @@ interface CommandBarProps {
   onCapture: () => void;
   onOpenBriefing: () => void;
   onScenarioChange: (id: ScenarioId) => void;
+  onGenerateReport?: () => void;
 }
 
 const aiStatusColor: Record<string, string> = {
@@ -57,6 +59,7 @@ export function CommandBar({
   captureRunning,
   activeScenarioId,
   isOutageActive,
+  hasReport,
   onStart,
   onClose,
   onToggleLiveDemo,
@@ -64,6 +67,7 @@ export function CommandBar({
   onCapture,
   onOpenBriefing,
   onScenarioChange,
+  onGenerateReport,
 }: CommandBarProps) {
   // Effective status: override to "Incident" when outage is detected
   const effectiveStatus = isOutageActive ? "Incident" : (autoMode ? "Autonomous" : aiStatus);
@@ -170,6 +174,19 @@ export function CommandBar({
             title="Configure data capture (system · method · frequency) + sync now"
           >
             {captureRunning ? "Scanning..." : "Capture Data"}
+          </button>
+        )}
+
+        {/* Generate GTT × Verint Report */}
+        {shiftStarted && !shiftClosed && onGenerateReport && (
+          <button
+            className="command-bar__btn command-bar__btn--capture"
+            type="button"
+            onClick={onGenerateReport}
+            title="Generate GTT × Verint reconciliation report"
+            style={hasReport ? { borderColor: "var(--ai)", color: "var(--ai)" } : undefined}
+          >
+            {hasReport ? "Report ✓" : "Report"}
           </button>
         )}
 

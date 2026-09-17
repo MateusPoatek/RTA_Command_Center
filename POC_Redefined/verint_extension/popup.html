@@ -14,16 +14,36 @@
     li { padding: 6px 8px; border-left: 3px solid #c0392b; background: #faf7f7; margin-bottom: 4px; border-radius: 3px; font-size: 11px; }
     li.medium { border-color: #e67e22; } li.low { border-color: #999; }
     .hint { color: #888; font-size: 10px; margin-top: 8px; line-height: 1.4; }
+    .toggle { display: flex; align-items: center; gap: 6px; font-size: 11px; color: #444; margin-top: 8px; cursor: pointer; }
+    .toggle input { width: auto; margin: 0; }
+    /* Floor-View gate probe */
+    hr { border: 0; border-top: 1px solid #eee; margin: 12px 0 10px; }
+    .probe-h { font-size: 11px; font-weight: 700; color: #6d28d9; margin-bottom: 6px; }
+    #probe { background: #6d28d9; }
+    #probe-verdict { margin: 8px 0 4px; font-size: 12px; font-weight: 700; }
+    #probe-verdict.go { color: #15803d; } #probe-verdict.fallback { color: #b45309; }
+    table.probe { width: 100%; border-collapse: collapse; font-size: 10px; }
+    table.probe th, table.probe td { text-align: left; padding: 2px 4px; border-bottom: 1px solid #f0f0f0; }
+    table.probe td.ok { color: #15803d; } table.probe td.bad { color: #b91c1c; }
   </style>
 </head>
 <body>
   <h1>RTA Live Bridge</h1>
   <div class="sub">Verint → RTA Command Center</div>
-  <div class="stat"><span class="count" id="count">0</span><span>adherence alerts captured</span></div>
+  <div class="stat"><span class="count" id="count">0</span><span>adherence alerts staged</span></div>
   <button id="push">Push to Command Center</button>
+  <label class="toggle"><input type="checkbox" id="autopush" /> Auto-push every page <span style="color:#888">(off = accumulate, push once)</span></label>
   <div id="sync" style="color:#666;font-size:10px;margin-top:8px;"></div>
   <ul id="list"></ul>
-  <div class="hint">Open the Verint calendar (apply your account filter) to capture, then open the Command Center at localhost:5173 to see the cards.</div>
+  <div class="hint"><b>How to use:</b> 1) Open the Verint calendar &amp; apply your filter. 2) Page through — the badge on the toolbar icon climbs as alerts stage. <i>The popup closes when you click the page; that's normal — watch the badge.</i> 3) Click <b>Push</b> once to send the whole load to the Command Center (localhost:5173) and dispatch there.</div>
+
+  <hr />
+  <div class="probe-h">Floor View — gate probe (read-only)</div>
+  <button id="probe">Run gate probe</button>
+  <div id="probe-verdict"></div>
+  <div id="probe-result"></div>
+  <div class="hint">Open the Verint calendar and page once first. Keep this popup open ~15s while it runs. Results carry no employee names — paste them back to C.</div>
+
   <script src="popup.js"></script>
 </body>
 </html>

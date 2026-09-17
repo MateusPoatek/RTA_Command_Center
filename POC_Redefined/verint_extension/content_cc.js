@@ -1,22 +1,28 @@
 // content_cc.js — ISOLATED world on http://localhost:5173/* (the Command Center).
 // Receives cards from the extension background and hands them to the React app
 // via window.postMessage (the app's useExtensionBridge hook listens for these).
-function inject(cards, syncedAt) {
+function inject(cards, syncedAt, roster) {
   window.postMessage(
-    { __rtaLiveBridge: true, kind: "cards", cards: cards || [], syncedAt: syncedAt || null },
+    {
+      __rtaLiveBridge: true,
+      kind: "cards",
+      cards: cards || [],
+      roster: roster || [],
+      syncedAt: syncedAt || null,
+    },
     window.location.origin
   );
 }
 
 // Pushed live whenever a new capture arrives.
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === "cards") inject(msg.cards, msg.syncedAt);
+  if (msg && msg.type === "cards") inject(msg.cards, msg.syncedAt, msg.roster);
 });
 
 // On (re)load of the Command Center tab, pull whatever's already captured.
 chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
   if (chrome.runtime.lastError) return;
-  if (resp && resp.cards && resp.cards.length) inject(resp.cards, resp.lastSyncedAt);
+  if (resp && resp.cards && resp.cards.length) inject(resp.cards, resp.lastSyncedAt, resp.roster);
 });
 
 // Relay capture-control messages FROM the Command Center page TO the background

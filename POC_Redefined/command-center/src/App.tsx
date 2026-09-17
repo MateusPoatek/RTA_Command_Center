@@ -50,7 +50,10 @@ import type {
   CommandCard,
   DataClass,
   LearningSignal,
+  ReconciliationReport,
+  ReportConfig,
 } from "./domain/types";
+import { DEFAULT_REPORT_CONFIG } from "./domain/types";
 
 // Shared
 import { formatChannel } from "./shared/channelConfig";
@@ -59,14 +62,17 @@ import { BASE_CONFIDENCE } from "./shared/constants";
 // Hooks
 import { useLiveEngine } from "./hooks/useLiveEngine";
 import { useExtensionBridge } from "./hooks/useExtensionBridge";
+import type { VerintRosterRow } from "./hooks/useExtensionBridge";
 import { useCaptureScheduler } from "./hooks/useCaptureScheduler";
 import { CaptureConfigModal, type CaptureSystem } from "./components/CaptureConfigModal";
+import { ReportConfigPanel, saveHistoryEntry } from "./components/ReportConfigPanel";
 
 // Components
 import { CommandBar }         from "./components/CommandBar";
 import { ShiftStartModal }    from "./components/ShiftStartModal";
 import { HealthStrip }        from "./components/HealthStrip";
 import { PriorityFeed }       from "./components/PriorityFeed";
+import { FloorView }          from "./components/FloorView";
 import { ProcessView }        from "./components/ProcessView";
 import { LearningStrip }      from "./components/LearningStrip";
 import { AgentActivityTicker } from "./components/AgentActivityTicker";
@@ -187,6 +193,33 @@ function App() {
   // Count of cards fully accepted by the RTA (no editing needed) — shown in HealthStrip.
   const aiHandledCount = learningSignals.filter((s) => s.decision === "accepted").length;
 
+  // -- GTT × Verint reconciliation report -----------------------------------
+  const [reportPayload,    setReportPayload]    = useState<ReconciliationReport | null>(null);
+  const [reportConfigOpen, setReportConfigOpen] = useState(false);
+  const [reportConfig,     setReportConfig]     = useState<ReportConfig>(DEFAULT_REPORT_CONFIG);
+
+  // Walk back up to 3 days to find the most recent generated report.
+  const fetchLatestReport = useCallback(async () => {
+    for (let daysBack = 0; daysBack < 4; daysBack++) {
+      const d = new Date();
+      d.setDate(d.getDate() - daysBack);
+      const dateStr = d.toISOString().slice(0, 10);
+      try {
+        const r = await fetch(`/runs/reports/reconciliation_${dateStr}.json`);
+        if (r.ok) {
+          const data: ReconciliationReport = await r.json();
+          setReportPayload(data);
+          return;
+        }
+      } catch (e) {
+        console.warn('[report] fetch error:', e);
+      }
+    }
+    console.warn('[report] no report found in the last 4 days');
+  }, []);
+
+  useEffect(() => { fetchLatestReport(); }, [fetchLatestReport]);
+
   // ---------------------------------------------------------------------------
   // Autonomous mode handler — called by useLiveEngine when AI acts on a card
   // ---------------------------------------------------------------------------
@@ -232,11 +265,28 @@ function App() {
   // and flips on a "LIVE" banner so it's obvious the data is real.
   const [liveBridgeActive, setLiveBridgeActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
-  useExtensionBridge((liveCards, syncedAt) => {
+  const [verintRoster, setVerintRoster] = useState<VerintRosterRow[]>([]);
+  // Which surface fills the left panel: the priority feed, or the spatial Floor View.
+  const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
+  useExtensionBridge((liveCards, syncedAt, roster) => {
     setCards(liveCards);
     setLiveBridgeActive(true);
     setLastSynced(syncedAt ?? new Date().toISOString());
+    if (roster.length > 0) setVerintRoster(roster);
   });
+
+  // Heartbeat: tick once a second so the banner shows a LIVING "synced Ns ago"
+  // that resets on each push and visibly goes quiet if pushes stop — the bridge
+  // isn't truly "LIVE" forever once it connected.
+  const [heartbeatNow, setHeartbeatNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!liveBridgeActive) return;
+    const id = setInterval(() => setHeartbeatNow(Date.now()), 1000);
+    return () => clearInterval(id);
+  }, [liveBridgeActive]);
+  const lastSyncAgoSec =
+    lastSynced != null ? Math.max(0, Math.round((heartbeatNow - Date.parse(lastSynced)) / 1000)) : null;
+  const liveFresh = lastSyncAgoSec != null && lastSyncAgoSec < 90; // heartbeat alarm is ~1 min
 
   // --- Capture Data hub: trigger logic (auto on frequency + manual override) ---
   const postToExtension = useCallback((kind: string, extra: Record<string, unknown> = {}) => {
@@ -491,13 +541,38 @@ function App() {
         onCapture={() => setCaptureConfigOpen(true)}
         onOpenBriefing={() => setBriefingOpen(true)}
         onScenarioChange={(id) => setActiveScenarioId(id)}
+        hasReport={reportPayload !== null}
+        onGenerateReport={async () => {
+          const today = new Date().toISOString().slice(0, 10);
+          // If the local API is running and we have a Verint roster, use the full pipeline.
+          // Falls back to fetching the most recent pre-generated JSON if the API is unreachable.
+          try {
+            const res = await fetch("/api/generate-report", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                date: today,
+                functional_area: reportConfig.functionalArea,
+                sites: reportConfig.sites,
+                verint_rows: verintRoster,
+              }),
+            });
+            if (res.ok) {
+              // Report written to disk — now load it.
+              await fetchLatestReport();
+              return;
+            }
+          } catch {/* API not running — fall through to disk load */}
+          // Fallback: load the most recent pre-generated file.
+          fetchLatestReport();
+        }}
       />
 
       {liveBridgeActive && (
         <div
           data-testid="live-bridge-banner"
           style={{
-            background: "#c0392b",
+            background: liveFresh ? "#c0392b" : "#6b7280",
             color: "#fff",
             padding: "6px 16px",
             fontSize: 13,
@@ -515,22 +590,27 @@ function App() {
               borderRadius: "50%",
               background: "#fff",
               display: "inline-block",
-              animation: "rtaPulse 1.6s ease-in-out infinite",
+              opacity: liveFresh ? 1 : 0.5,
+              animation: liveFresh ? "rtaPulse 1.6s ease-in-out infinite" : "none",
             }}
           />
-          <span>LIVE — captured from Verint via the RTA Live Bridge extension (evidence-backed)</span>
+          <span>
+            {liveFresh
+              ? "LIVE — captured from Verint via the RTA Live Bridge extension (evidence-backed)"
+              : "IDLE — bridge connected, no fresh capture (page the Verint calendar to resume)"}
+          </span>
           {lastSynced && (
             <span
-              key={lastSynced}
               data-testid="live-bridge-synced"
-              style={{
-                marginLeft: "auto",
-                fontWeight: 400,
-                fontSize: 12,
-                animation: "rtaPulse 0.6s ease-in-out",
-              }}
+              style={{ marginLeft: "auto", fontWeight: 400, fontSize: 12 }}
             >
-              last synced {new Date(lastSynced).toLocaleTimeString()}
+              ♥ synced{" "}
+              {lastSyncAgoSec == null
+                ? "—"
+                : lastSyncAgoSec < 60
+                ? `${lastSyncAgoSec}s ago`
+                : `${Math.floor(lastSyncAgoSec / 60)}m ${lastSyncAgoSec % 60}s ago`}{" "}
+              · {new Date(lastSynced).toLocaleTimeString()}
             </span>
           )}
         </div>
@@ -547,14 +627,45 @@ function App() {
 
       <div className="workspace">
         <div className="workspace__left">
-          <PriorityFeed
-            cards={cards}
-            newCardIds={newCardIds}
-            focusedCardId={focusedCardId}
-            onAction={(action, cardId) => runCardAction(action, cardId)}
-            onFocus={(cardId) => setFocusedCardId(cardId)}
-            onShowBoard={() => {/* future: full kanban toggle */}}
-          />
+          <div className="left-view-toggle" role="tablist">
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainView === "priority-feed"}
+              className={`lvt-btn${mainView === "priority-feed" ? " lvt-btn--active" : ""}`}
+              onClick={() => setMainView("priority-feed")}
+            >
+              Priority Feed
+            </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainView === "floor"}
+              className={`lvt-btn${mainView === "floor" ? " lvt-btn--active" : ""}`}
+              onClick={() => setMainView("floor")}
+            >
+              Floor View
+            </button>
+          </div>
+          {mainView === "floor" ? (
+            <FloorView
+              cards={cards}
+              lobData={lobHealth}
+              onAgentClick={(cardId) => {
+                setFocusedCardId(cardId); // promote the card in the feed (radar finds, card resolves)
+                setMainView("priority-feed");
+              }}
+            />
+          ) : (
+            <PriorityFeed
+              cards={cards}
+              newCardIds={newCardIds}
+              focusedCardId={focusedCardId}
+              onAction={(action, cardId) => runCardAction(action, cardId)}
+              onFocus={(cardId) => setFocusedCardId(cardId)}
+              onShowBoard={() => {/* future: full kanban toggle */}}
+            />
+          )}
         </div>
 
         <div className="workspace__right">
@@ -565,6 +676,9 @@ function App() {
             attendanceReports={activeScenario.reports.attendanceReports}
             dispatchLog={dispatchLog}
             onAction={(action, cardId) => runCardAction(action, cardId)}
+            reportPayload={reportPayload}
+            reportConfig={reportConfig}
+            onOpenReportConfig={() => setReportConfigOpen(true)}
           />
         </div>
       </div>
@@ -616,6 +730,17 @@ function App() {
         <AutoActionToast
           key={lastAutoAction.id}
           action={lastAutoAction}
+        />
+      )}
+
+      {reportConfigOpen && (
+        <ReportConfigPanel
+          defaults={reportConfig}
+          onClose={() => setReportConfigOpen(false)}
+          onConfigSave={(cfg) => {
+            setReportConfig(cfg);
+            setReportConfigOpen(false);
+          }}
         />
       )}
 

@@ -9,6 +9,8 @@ __pycache__/
 .pytest_cache/
 .venv/
 venv/
+.venv-browser/
+**/.venv-browser/
 
 # Node / Vite generated files
 node_modules/
@@ -33,10 +35,23 @@ temp/
 !.env.example
 !.env.*.example
 
+# Cloud service-account keys / GTT credentials — NEVER commit (contain private keys).
+GTT_JSON/
+**/GTT_JSON/
+ti-is-prod-*.json
+**/*service_account*.json
+**/*-gserviceaccount*.json
+
 # Raw capture artifacts containing employee PII (transient dev scratch — see
 # DATA_GOVERNANCE_AND_MULTITENANCY.md: raw bodies stay local + transient).
 runs/
 **/runs/
+
+# Floor View dry-run scratch — any locally-saved probe captures hold real
+# employee names/IDs (PII). The committed floor_view/ tree is docs + the
+# annotated harness ONLY; raw bodies never enter source control.
+POC_Redefined/floor_view/dry_run/captures/
+**/floor_view/dry_run/captures/
 
 # Real client data / screenshots (employee names, hire dates, faces — PII).
 CIBC_Sample_Attendance_Data_Verint/

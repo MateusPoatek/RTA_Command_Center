@@ -398,6 +398,20 @@ export interface AgentProfile {
   recommendedAction: string;
   /** Preview of upcoming schedule activities (e.g. ["Break 14:00", "Lunch 15:30"]). */
   schedulePreview: string[];
+  // --- Verint-derived metrics (optional; populated on LIVE extension cards by
+  // parse.js from actualSchedule.events[] + adherenceSummary). Absent on
+  // fixtures/scenarios. See floor_view/docs/VERINT_EXTRACTION_CAPABILITIES.md. ---
+  /** Shift open (ISO) = earliest actualSchedule event start. */
+  shiftStartIso?: string;
+  /** Shift close (ISO) = latest actualSchedule event end. */
+  shiftEndIso?: string;
+  /** Shift span in minutes (close − open). */
+  shiftSpanMinutes?: number;
+  /** Productive minutes by the "paid" classification (Evelyn Brooks' ask; the
+   *  exact productive-activity definition is configurable with the team). */
+  productivePaidMinutes?: number;
+  /** Productive minutes by the stricter "work" classification. */
+  productiveWorkMinutes?: number;
 }
 
 // ---------------------------------------------------------------------------
@@ -657,6 +671,85 @@ export interface AutoAction {
  *
  * In production, this comes from CIBC SSO / identity provider.
  */
+// ---------------------------------------------------------------------------
+// GTT × Verint Reconciliation Report types
+// ---------------------------------------------------------------------------
+
+export type DiscrepancyType =
+  | "clocked_in_not_in_adherence"
+  | "in_adherence_no_clock_in"
+  | "clocked_out_still_active"
+  | "match_ok";
+
+export interface DiscrepancyRow {
+  workday_id: string;
+  employee: string;
+  subgroup: string;
+  lob: string;
+  gtt_event: string;
+  verint_status: string;
+  adherence_pct: number | null;
+  ooa_seconds: number | null;
+  discrepancy_type: DiscrepancyType;
+}
+
+export interface ReconciliationMeta {
+  schema_version: string;
+  generated_by: string;
+  sources: string[];
+  join_strategy: string;
+  ai_context: string;
+}
+
+export interface ReconciliationReport {
+  _meta: ReconciliationMeta;
+  generated_at: string;
+  functional_area: string;
+  date: string;
+  gtt_total: number;
+  verint_total: number;
+  matched: number;
+  discrepancy_count: number;
+  intelligence: string[];
+  discrepancies: DiscrepancyRow[];
+}
+
+export interface ReportConfig {
+  functionalArea: string;
+  sites: string;
+  visibleColumns: (keyof DiscrepancyRow)[];
+  recipients: string;
+  schedule: "off" | "daily" | "weekly";
+}
+
+export interface ReportHistoryEntry {
+  date: string;
+  gtt_total: number;
+  verint_total: number;
+  matched: number;
+  discrepancy_count: number;
+  intelligence: string[];
+  generated_at: string;
+}
+
+export const DEFAULT_REPORT_CONFIG: ReportConfig = {
+  functionalArea: "FA_Epic Games",
+  sites: "SV - Antiguo Cuscatlan - Torre Emblema",
+  visibleColumns: [
+    "employee",
+    "subgroup",
+    "gtt_event",
+    "verint_status",
+    "adherence_pct",
+    "ooa_seconds",
+    "discrepancy_type",
+  ],
+  recipients: "",
+  schedule: "off",
+};
+
+// ---------------------------------------------------------------------------
+
 export interface RTAProfile {
   /** Full name of the logged-in RTA. */
   name: string;

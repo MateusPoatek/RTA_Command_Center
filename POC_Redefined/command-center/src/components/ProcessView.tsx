@@ -15,12 +15,13 @@
  */
 
 import { useState } from "react";
-import type { CardAction, CommandCard, LOBHealth, ProcessId, ReportItem } from "../domain/types";
+import type { CardAction, CommandCard, LOBHealth, ProcessId, ReportItem, ReconciliationReport, ReportConfig, DiscrepancyRow } from "../domain/types";
 import { PROCESSES } from "../domain/types";
 import { getActiveSorted, getPrimaryAction, primaryActionLabel, statusLabel } from "../utils/cardHelpers";
 import { DispatchFeed } from "./DispatchFeed";
 import { AlertDetailModal } from "./AlertDetailModal";
 import { ReportDetailModal } from "./ReportDetailModal";
+import { GttReportDashboard } from "./GttReportDashboard";
 import type { AttendanceReportData, DispatchEntry } from "../domain/scenario_types";
 
 // ---------------------------------------------------------------------------
@@ -144,9 +145,12 @@ interface ProcessPanelProps {
   onAction: (action: CardAction, cardId: string) => void;
   onSelectEntry: (entry: DispatchEntry) => void;
   onSelectReport: (report: AttendanceReportData) => void;
+  reportPayload?: ReconciliationReport | null;
+  reportConfig?: ReportConfig;
+  onOpenReportConfig?: () => void;
 }
 
-function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, dispatchLog, onAction, onSelectEntry, onSelectReport }: ProcessPanelProps) {
+function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, dispatchLog, onAction, onSelectEntry, onSelectReport, reportPayload, reportConfig, onOpenReportConfig }: ProcessPanelProps) {
   const [expandedLob, setExpandedLob] = useState<string | null>(null);
 
   // Cards relevant to this process
@@ -228,70 +232,83 @@ function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, d
 
     return (
       <div className="process-panel">
-        <p className="process-panel__insight">
-          AI assembles, validates and dispatches every report automatically.
-          {sentReports.length > 0 && (
-            <span className="process-panel__ai-count">
-              {" "}{sentReports.length} report{sentReports.length !== 1 ? "s" : ""} sent this shift — click to inspect.
-            </span>
-          )}
-        </p>
-
-        {/* ── Sent reports ── */}
-        {sentReports.length > 0 && (
-          <div className="report-section">
-            <p className="report-section__label">Sent this shift</p>
-            {sentReports.map((r) => (
-              <button
-                key={r.id}
-                type="button"
-                className={`sent-report-row${r.anomaly ? " sent-report-row--anomaly" : ""}`}
-                onClick={() => onSelectReport(r)}
-                aria-label={`Inspect ${r.cycleLabel} report`}
-              >
-                <div className="sent-report-row__left">
-                  <span className="sent-report-row__cycle">{r.cycleLabel}</span>
-                  {r.anomaly && (
-                    <span className="sent-report-row__anomaly-badge">⚠ Anomaly</span>
-                  )}
-                </div>
-                <div className="sent-report-row__metrics">
-                  <span className="sent-report-row__attendance"
-                    style={r.attendancePct < 75 ? { color: "var(--critical)", fontWeight: 700 } : undefined}
-                  >
-                    {r.attendancePct}%
-                  </span>
-                  <span className="sent-report-row__metric-label">attendance</span>
-                  <span className="sent-report-row__noshow">{r.noShowCount} no-show{r.noShowCount !== 1 ? "s" : ""}</span>
-                </div>
-                <div className="sent-report-row__right">
-                  <span className="sent-report-row__time">
-                    {new Date(r.reportTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
-                  </span>
-                  <span className="sent-report-row__inspect-hint">Inspect →</span>
-                </div>
-              </button>
-            ))}
-          </div>
+        {/* GTT × Verint reconciliation dashboard — shown when a report is available */}
+        {reportPayload && reportConfig && (
+          <GttReportDashboard
+            report={reportPayload}
+            visibleColumns={reportConfig.visibleColumns as (keyof DiscrepancyRow)[]}
+            onOpenConfig={onOpenReportConfig ?? (() => {})}
+          />
         )}
 
-        {/* ── Upcoming / pending ── */}
-        <div className="report-section">
-          <p className="report-section__label">Upcoming</p>
-          <div className="process-panel__reports">
-            {reports.map((r) => (
-              <div key={r.id} className={`report-row-v2 report-row-v2--${r.status}`}>
-                <span className="report-row-v2__title">{r.title}</span>
-                <div className="report-row-v2__right">
-                  <span className="report-row-v2__status">{r.status.replace("-", " ").toUpperCase()}</span>
-                  {r.dueInMinutes !== undefined && (
-                    <span className="report-row-v2__due">Due in {r.dueInMinutes} min</span>
-                  )}
-                </div>
+        {!reportPayload && (
+          <>
+            <p className="process-panel__insight">
+              AI assembles, validates and dispatches every report automatically.
+              {sentReports.length > 0 && (
+                <span className="process-panel__ai-count">
+                  {" "}{sentReports.length} report{sentReports.length !== 1 ? "s" : ""} sent this shift — click to inspect.
+                </span>
+              )}
+            </p>
+
+            {/* ── Sent reports ── */}
+            {sentReports.length > 0 && (
+              <div className="report-section">
+                <p className="report-section__label">Sent this shift</p>
+                {sentReports.map((r) => (
+                  <button
+                    key={r.id}
+                    type="button"
+                    className={`sent-report-row${r.anomaly ? " sent-report-row--anomaly" : ""}`}
+                    onClick={() => onSelectReport(r)}
+                    aria-label={`Inspect ${r.cycleLabel} report`}
+                  >
+                    <div className="sent-report-row__left">
+                      <span className="sent-report-row__cycle">{r.cycleLabel}</span>
+                      {r.anomaly && (
+                        <span className="sent-report-row__anomaly-badge">⚠ Anomaly</span>
+                      )}
+                    </div>
+                    <div className="sent-report-row__metrics">
+                      <span className="sent-report-row__attendance"
+                        style={r.attendancePct < 75 ? { color: "var(--critical)", fontWeight: 700 } : undefined}
+                      >
+                        {r.attendancePct}%
+                      </span>
+                      <span className="sent-report-row__metric-label">attendance</span>
+                      <span className="sent-report-row__noshow">{r.noShowCount} no-show{r.noShowCount !== 1 ? "s" : ""}</span>
+                    </div>
+                    <div className="sent-report-row__right">
+                      <span className="sent-report-row__time">
+                        {new Date(r.reportTime).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}
+                      </span>
+                      <span className="sent-report-row__inspect-hint">Inspect →</span>
+                    </div>
+                  </button>
+                ))}
               </div>
-            ))}
-          </div>
-        </div>
+            )}
+
+            {/* ── Upcoming / pending ── */}
+            <div className="report-section">
+              <p className="report-section__label">Upcoming</p>
+              <div className="process-panel__reports">
+                {reports.map((r) => (
+                  <div key={r.id} className={`report-row-v2 report-row-v2--${r.status}`}>
+                    <span className="report-row-v2__title">{r.title}</span>
+                    <div className="report-row-v2__right">
+                      <span className="report-row-v2__status">{r.status.replace("-", " ").toUpperCase()}</span>
+                      {r.dueInMinutes !== undefined && (
+                        <span className="report-row-v2__due">Due in {r.dueInMinutes} min</span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
 
         <ProcessCardList cards={processCards} onAction={onAction} />
       </div>
@@ -398,9 +415,12 @@ interface ProcessViewProps {
   attendanceReports: AttendanceReportData[];
   dispatchLog: DispatchEntry[];
   onAction: (action: CardAction, cardId: string) => void;
+  reportPayload?: ReconciliationReport | null;
+  reportConfig?: ReportConfig;
+  onOpenReportConfig?: () => void;
 }
 
-export function ProcessView({ cards, lobData, reports, attendanceReports, dispatchLog, onAction }: ProcessViewProps) {
+export function ProcessView({ cards, lobData, reports, attendanceReports, dispatchLog, onAction, reportPayload, reportConfig, onOpenReportConfig }: ProcessViewProps) {
   const [activeProcess, setActiveProcess]       = useState<ProcessId>("adherence");
   const [selectedEntry,  setSelectedEntry]      = useState<DispatchEntry | null>(null);
   const [selectedReport, setSelectedReport]     = useState<AttendanceReportData | null>(null);
@@ -450,6 +470,9 @@ export function ProcessView({ cards, lobData, reports, attendanceReports, dispat
             onAction={onAction}
             onSelectEntry={setSelectedEntry}
             onSelectReport={setSelectedReport}
+            reportPayload={reportPayload}
+            reportConfig={reportConfig}
+            onOpenReportConfig={onOpenReportConfig}
           />
         </div>
       </div>

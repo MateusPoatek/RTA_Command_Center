@@ -11,13 +11,21 @@ window.addEventListener("message", (e) => {
     } catch (_) {
       /* background may be asleep; it will rebuild on next capture */
     }
+  } else if (d.kind === "probe-result") {
+    // Floor-View gate probe result (ids/counts only, no names) → background.
+    try {
+      chrome.runtime.sendMessage({ type: "probe-result", rows: d.rows, meta: d.meta });
+    } catch (_) {}
   }
 });
 
-// Background → here → inject.js (MAIN world): relay a re-fetch command so the
-// page replays the calendar-filter request in the user's session.
+// Background → here → inject.js (MAIN world): relay a re-fetch command (the page
+// replays the calendar-filter request in the user's session), or a "probe"
+// command (run the read-only Floor-View gate probe).
 chrome.runtime.onMessage.addListener((msg) => {
   if (msg && msg.type === "refetch") {
     window.postMessage({ __rtaLiveBridge: true, kind: "refetch" }, window.location.origin);
+  } else if (msg && msg.type === "probe") {
+    window.postMessage({ __rtaLiveBridge: true, kind: "probe" }, window.location.origin);
   }
 });
