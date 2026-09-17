@@ -198,5 +198,4 @@ The **Reporting Agent** (Planned — see `PROJECT_PLAN.md`) will automate this p
 - [PAIN_POINTS.md](./PAIN_POINTS.md) — full list of RTA operational pain points, including attendance
 - [NEXT_STEPS.md](./NEXT_STEPS.md) — production connector integration plan (GTT, Workday, Verint, Data Studio)
 - [ARCHITECTURE.md](./ARCHITECTURE.md) — POC vs production comparison table
-- [PROJECT_PLAN.md](./PROJECT_PLAN.md) — Reporting Agent build status and roadmap
-- [HARNESS_FOR_COMPUTER_USE.md](./HARNESS_FOR_COMPUTER_USE.md) — Vision Agent build guide (Track A VDI approach + Track B REST API)
+- [HARNESS_FOR_COMPUTER_USE_HOWTO.md](./HARNESS_FOR_COMPUTER_USE_HOWTO.md) — Vision Agent build guide (Track A VDI approach + Track B REST API)

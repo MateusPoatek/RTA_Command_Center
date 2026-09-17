@@ -36,7 +36,7 @@ Every document here is built on four strategic decisions made and approved in th
 | [CONNECTOR_CATALOG.md](./CONNECTOR_CATALOG.md) | 🟢 drafted | Flagship #2 — full. |
 | [FDAE_CONFIGURATION_LAYER.md](./FDAE_CONFIGURATION_LAYER.md) | 🟡 starter | Model + manifest + lifecycle defined; console UX sketched, not finalized. |
 | [PRD.md](./PRD.md) | 🟠 outline | Rich outline; sections to be filled next pass. |
-| [SECURITY_ARCHITECTURE.md](./SECURITY_ARCHITECTURE.md) | 🟠 outline | Rich outline; OAuth2/MFA/gateway/threat-model structure captured. |
+| [SECURITY_ARCHITECTURE.md](./SECURITY_ARCHITECTURE.md) | 🟢 drafted | Flagship #3 — full: trust model, OIDC/MFA, RBAC, gateway, secrets, network, capture/write-path, LLM security, STRIDE, audit, compliance. |
 | [DATA_GOVERNANCE_AND_MULTITENANCY.md](./DATA_GOVERNANCE_AND_MULTITENANCY.md) | 🟠 outline | Rich outline; isolation tiers + three-store model + PII gate captured. |
 | [DEPLOYMENT_AND_OPERATIONS.md](./DEPLOYMENT_AND_OPERATIONS.md) | 🟠 outline | Rich outline. |
 | [API_SPECIFICATION.md](./API_SPECIFICATION.md) | ⚪ deferred | Placeholder; to be written once the architecture settles. |

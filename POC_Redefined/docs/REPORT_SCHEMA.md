@@ -26,11 +26,13 @@ need to parse, learn from, or act on reconciliation report data.
     "ai_context": "discrepancy_type enum: clocked_in_not_in_adherence | in_adherence_no_clock_in (present, counts as attending — excluded from discrepancy_count) | no_clock_in_no_activity (real absence) | clocked_out_still_active | not_yet_scheduled | match_ok",
     "fuzzy_match_available": true,
     "earliest_shift_start": "2026-06-16T13:00:00+00:00",
-    "latest_shift_end": "2026-06-16T21:30:00+00:00"
+    "latest_shift_end": "2026-06-16T21:30:00+00:00",
+    "gtt_event_rows_total": 250
   },
   "generated_at": "2026-06-16T14:30:00+00:00",
-  "functional_area": "FA_CIBC",
+  "functional_area": "FA_BankTier",
   "date": "2026-06-16",
+  "source": "gtt_verint",
   "gtt_total": 78,
   "verint_total": 4,
   "matched": 4,
@@ -44,6 +46,17 @@ need to parse, learn from, or act on reconciliation report data.
   ]
 }
 ```
+
+> **`source` (top-level, added for Verint-only reporting):** `"gtt_verint"` (default) or
+> `"verint_only"` — set by the caller (`local_api.py`'s `/generate-report`) for accounts where
+> GTT isn't available yet. In `"verint_only"` mode, `gtt_verint_reconciler.reconcile()` is never
+> given any GTT rows: `gtt_total`/`matched` are always `0`, `_meta.sources` becomes `["verint"]`
+> instead of `["gtt", "verint"]`, and every `discrepancies[]` row is classified purely from Verint
+> fields (`in_adherence_no_clock_in` / `no_clock_in_no_activity` / `not_yet_scheduled` — the
+> GTT-specific types `clocked_in_not_in_adherence`/`clocked_out_still_active` never appear). The
+> `intelligence` bullets reword themselves accordingly (no "GTT clock-in" language when GTT was
+> never queried). See `POC_Redefined/docs/KNOWN_ISSUES.md` and
+> `docs/handoff/Engineering_handoff_2026-09-15/00_START_HERE.md` for the fuller story.
 
 > **`gtt_total` counts distinct EMPLOYEES, not raw GTT rows.** GTT emits one row per AUX
 > event type per employee per day (`clock_in`, `daily-communications`, `productivity`,
@@ -59,7 +72,7 @@ need to parse, learn from, or act on reconciliation report data.
 |-------|------|-------------|
 | `schema_version` | string | Version of this schema (`"1.0"`) |
 | `generated_by` | string | Script that created this file |
-| `sources` | string[] | Data sources joined (`["gtt", "verint"]`) |
+| `sources` | string[] | Data sources joined — `["gtt", "verint"]`, or `["verint"]` when the top-level `source` is `"verint_only"` |
 | `join_strategy` | string | How GTT and Verint rows were matched |
 | `ai_context` | string | Enum definitions for `discrepancy_type` |
 | `fuzzy_match_available` | bool | **Check this before trusting the discrepancy count.** `false` means `rapidfuzz` wasn't installed in the environment that generated this report — the fuzzy-match fallback silently no-ops on `ImportError`, so every employee whose name doesn't exact-match Verint's surname format is reported as a discrepancy even if they actually attended. |
@@ -104,11 +117,11 @@ note above; one row per person, not one per GTT event).
 |-------|------|-------------|
 | `workday_id` | string | 8-digit numeric Workday employee ID (from GTT). Empty if agent only in Verint. |
 | `employee` | string | Display name (first last). From GTT; or derived from Verint "Last, First" format. |
-| `subgroup` | string | GTT LOB label (e.g. `"CIBC"`, `"CIBC - Costco"`). Empty if agent is Verint-only. |
-| `lob` | string | Verint LOB name (from capture config, e.g. `"CIBC"`). Empty if agent is GTT-only. |
+| `subgroup` | string | GTT LOB label (e.g. `"BankTier"`, `"BankTier - Costco"`). Empty if agent is Verint-only. |
+| `lob` | string | Verint LOB name (from capture config, e.g. `"BankTier"`). Empty if agent is GTT-only. |
 | `gtt_event` | string | Summary of this employee's distinct GTT event types today, e.g. `"clock_in, daily-communications, productivity +2 more"`. `"absent"` if the agent has no GTT rows at all (Verint-only). |
 | `gtt_event_count` | int | Raw count of GTT event rows behind this employee's summary (0 if Verint-only). |
-| `verint_status` | string | Verbatim Verint actual_activity (e.g. `"CIBC_Break"`). `"not_captured"` if missing. |
+| `verint_status` | string | Verbatim Verint actual_activity (e.g. `"BankTier_Break"`). `"not_captured"` if missing. |
 | `adherence_pct` | float\|null | Day's adherence percentage from Verint (0–100). Null if not in Verint. |
 | `ooa_seconds` | int\|null | Out-of-adherence duration in seconds from Verint (worst single violation). Null if not in Verint. |
 | `adherence_minutes` | int\|null | Minutes **in-adherence** so far today (published minus violation minutes, from Verint's `adherenceSummary`) — cumulative up to report-generation time, **not** a full-shift total. Null if not in Verint. |
@@ -144,7 +157,7 @@ Suitable for:
 ```json
 [
   "High mismatch: 22% of GTT clock-ins (17 agents) had no corresponding Verint adherence record. Investigate capture gap.",
-  "Possible site issue in 'CIBC - Costco': 5 agents from that subgroup are missing from Verint — check network/login connectivity."
+  "Possible site issue in 'BankTier - Costco': 5 agents from that subgroup are missing from Verint — check network/login connectivity."
 ]
 ```
 
@@ -176,7 +189,7 @@ for the same date overwrites the previous entry.
 | Parameter | Default | Notes |
 |-----------|---------|-------|
 | `functionalArea` | `FA_Epic Games` | Note the space — not `FA_EPIC` or `FA_EpicGames`. |
-| `sites` | `SV - Antiguo Cuscatlan - Torre Emblema` | Confirmed 2026-06-17 (2,288 rows). Other SV sites return 0. CIBC: `GT - Guatemala - Pradera East`. |
+| `sites` | `SV - Antiguo Cuscatlan - Torre Emblema` | Confirmed 2026-06-17 (2,288 rows). Other SV sites return 0. Bank-tier client: `GT - Guatemala - Pradera East`. |
 | `startDate` / `endDate` | `<date> 00:00:00` / `23:59:59` | Eastern time. |
 | `timezone` | `America/Toronto` | Verint display timezone. |
 | `timezoneLabel` | `Eastern Time (America/Toronto)` | Human-readable TZ label. |
