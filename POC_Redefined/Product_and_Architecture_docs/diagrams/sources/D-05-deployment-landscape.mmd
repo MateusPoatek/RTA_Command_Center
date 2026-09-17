@@ -1,0 +1,56 @@
+%% D-05 Deployment Landscape
+%% Source: extends ../../docs/diagrams/sources/command-center-infrastructure.mmd; ../../docs/engineering/SYSTEM_ARCHITECTURE.md §3-4
+%% Purpose: one image, two topologies (P3) — the five cloud-neutral seams (P4) bound concretely per environment
+
+flowchart TB
+
+    Image(["ONE OCI Image — RTA Automation<br/>(rules core + adapters, unchanged per environment — P3)"])
+
+    subgraph BANKTIER ["Topology A — in-client-cloud (bank-tier) · manifest: banktier / prod / v14"]
+        direction TB
+        BankCtx["accessTier: none · deployment: in-client-cloud<br/>capture: vision_ocr (in-VDI) → verint_rest (if credentialed) → file export"]
+        subgraph BankSeams ["Seam bindings — the bank-tier client's own Azure tenancy"]
+            direction LR
+            CVault["Secret Vault<br/>Azure Key Vault"]
+            COp["Operational + Audit Store<br/>Cosmos DB / Postgres + object-lock<br/>(WORM, region-locked)"]
+            CIntel["Intelligence Store<br/>per-tenant warehouse<br/>(client-hosted)"]
+            CLlm["LLM Endpoint<br/>in-tenant Azure OpenAI<br/>(advise/draft only)"]
+            CRuntime["Runtime + Gateway<br/>Azure Container Apps<br/>federated to Entra/Azure AD"]
+        end
+        BankCtx -.-> BankSeams
+        BankNote["Vendor retains nothing in the runtime data path.<br/>No public ingress; default-deny egress."]
+    end
+
+    subgraph TELUS ["Topology B — vendor-hosted · manifest: &lt;tenant&gt; / prod (committed first target — Telus Digital GCP)"]
+        direction TB
+        TelusCtx["accessTier: full / partial · deployment: vendor-hosted<br/>capture: verint_rest / browser extension / netcap"]
+        subgraph TelusSeams ["Seam bindings — Telus Digital GCP project"]
+            direction LR
+            TVault["Secret Vault<br/>GCP Secret Manager"]
+            TOp["Operational + Audit Store<br/>Cloud SQL (Postgres) + Firestore<br/>(WORM, hash-chained)"]
+            TIntel["Intelligence Store<br/>per-tenant warehouse<br/>(isolated per tenant — D3)"]
+            TLlm["LLM Endpoint<br/>Vertex AI / FuelIX via egress proxy<br/>(advise/draft only)"]
+            TRuntime["Runtime + Gateway<br/>Cloud Run + Cloud Scheduler/Tasks<br/>IAM identity token"]
+        end
+        TelusCtx -.-> TelusSeams
+        TelusNote["Isolated per tenant; reuses existing spine<br/>(RPA Engine orchestration, Intelligent Insights telemetry)."]
+        AssessNote["🟡 UNDER ASSESSMENT — one shared GCP project (isolated by tenant manifest)<br/>vs. one dedicated GCP project per account, for future production environments.<br/>Not yet decided; today's POC runs shared-project."]
+    end
+
+    Image -->|"binds manifest v14<br/>(boot: read → wire deterministically)"| BANKTIER
+    Image -->|"binds manifest<br/>(boot: read → wire deterministically)"| TELUS
+
+    Same["Same image + a different manifest → a different topology.<br/>No per-client forks; moving clouds is a seam-binding swap, not a rewrite."]
+    Image -.-> Same
+
+    classDef image fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
+    classDef ctx fill:#f8fafc,stroke:#94a3b8,color:#334155
+    classDef seam fill:#f0fdf4,stroke:#16a34a,stroke-dasharray:5 3,color:#14532d
+    classDef note fill:#f8fafc,stroke:#94a3b8,stroke-dasharray:4 3,color:#334155
+
+    class Image image
+    class BankCtx,TelusCtx ctx
+    class CVault,COp,CIntel,CLlm,CRuntime,TVault,TOp,TIntel,TLlm,TRuntime seam
+    class BankNote,TelusNote,Same note
+    classDef assess fill:#fefce8,stroke:#ca8a04,stroke-dasharray:4 3,color:#713f12
+    class AssessNote assess

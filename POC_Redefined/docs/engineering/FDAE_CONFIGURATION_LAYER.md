@@ -17,7 +17,7 @@ Get the vocabulary right, because the wrong word misleads the build:
 | Needs a build? | No | Yes (full test suite) |
 | Rollback | re-activate previous manifest (seconds) | redeploy a previous image |
 
-> This is **not** CI/CD. The container image is immutable; only configuration changes. The control plane *may trigger* a CD deploy when (and only when) a config change also bumps the image tag — that is the single, one-directional coupling. Keep the two pipelines separate: a CIBC threshold tweak must never be able to break EPIC.
+> This is **not** CI/CD. The container image is immutable; only configuration changes. The control plane *may trigger* a CD deploy when (and only when) a config change also bumps the image tag — that is the single, one-directional coupling. Keep the two pipelines separate: a bank-tier client's threshold tweak must never be able to break EPIC.
 
 This realizes the existing commitment in [../NEXT_STEPS.md](../NEXT_STEPS.md): *"codebase unchanged per account; only config changes."*
 
@@ -80,8 +80,8 @@ One declarative, versioned document per client per environment that **fully dete
 
 ```jsonc
 {
-  "tenantId": "cibc",
-  "displayName": "CIBC GT/PH",
+  "tenantId": "banktier",
+  "displayName": "Bank-tier Client GT/PH",
   "environment": "prod",
   "version": 14,                       // monotonic; every save increments
   "accessTier": "none",                // full | partial | none  -> drives capture strategy
@@ -98,7 +98,7 @@ One declarative, versioned document per client per environment that **fully dete
 
   // CAPTURE — ordered list; THE ORDER IS THE FALLBACK CHAIN
   "capture": [
-    { "adapter": "verint_rest",   "frequencySeconds": 60, "credentialRef": "secrets://cibc/verint", "enabled": true },
+    { "adapter": "verint_rest",   "frequencySeconds": 60, "credentialRef": "secrets://banktier/verint", "enabled": true },
     { "adapter": "vision_ocr",    "constraint": "in-vdi-only", "enabled": true },
     { "adapter": "gscript",       "enabled": false }
   ],
@@ -106,10 +106,10 @@ One declarative, versioned document per client per environment that **fully dete
   // DISPATCH — enabled adapters + LOB->channel map (replaces the hardcoded map)
   "dispatch": {
     "channels": {
-      "google-chat-lob": { "provider": "google-chat", "credentialRef": "secrets://cibc/gchat" },
-      "servicenow":      { "provider": "servicenow",  "credentialRef": "secrets://cibc/snow" }
+      "google-chat-lob": { "provider": "google-chat", "credentialRef": "secrets://banktier/gchat" },
+      "servicenow":      { "provider": "servicenow",  "credentialRef": "secrets://banktier/snow" }
     },
-    "lobMap": [ { "lob": "TLB", "geo": "Guatemala", "channel": "google-chat-lob", "spaceRef": "secrets://cibc/gchat/tlb" } ],
+    "lobMap": [ { "lob": "TLB", "geo": "Guatemala", "channel": "google-chat-lob", "spaceRef": "secrets://banktier/gchat/tlb" } ],
     "fallbackChannel": "google-chat-lob",
     "writeChannel": "rpa"              // the ONLY mutation path
   },
@@ -134,7 +134,7 @@ One declarative, versioned document per client per environment that **fully dete
 }
 ```
 
-**Determinism is the point:** at boot (or manifest reload) the image reads exactly one manifest and wires itself — instantiates only the capture adapters in `capture[]` (in order), only the dispatch channels in `dispatch.channels`, loads `rules` into the engine, binds the five seams. CIBC and EPIC run the *same image* with *different manifests*. Same image + same manifest → same wiring (auditable; safe rollback).
+**Determinism is the point:** at boot (or manifest reload) the image reads exactly one manifest and wires itself — instantiates only the capture adapters in `capture[]` (in order), only the dispatch channels in `dispatch.channels`, loads `rules` into the engine, binds the five seams. A bank-tier client and EPIC run the *same image* with *different manifests*. Same image + same manifest → same wiring (auditable; safe rollback).
 
 ## 3. The connector registry
 

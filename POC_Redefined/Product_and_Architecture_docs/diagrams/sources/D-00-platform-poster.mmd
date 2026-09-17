@@ -1,0 +1,106 @@
+%% D-00 Platform Poster (A2 signature cover)
+%% Source: synthesis of D-01..D-20 + BRD AC-001..AC-007; package README
+%% Purpose: the whole WFM Automation Platform on one page — principles, personas, capture tiers, adapter-blind core, HITL, seams, external systems, deployment topologies, future — an airport-map an exec reads in 30s and an engineer reads for an hour
+
+flowchart TB
+
+    PRIN["<b>ARCHITECTURE PRINCIPLES</b> &nbsp;·&nbsp; P1 No AI write path &nbsp;·&nbsp; P2 Adapter-blind core &nbsp;·&nbsp; P3 One image / many manifests &nbsp;·&nbsp; P4 Cloud-neutral seams (GCP-first) &nbsp;·&nbsp; P5 Human-in-the-loop before any external write"]
+
+    subgraph PEOPLE ["WHO USES IT"]
+        direction LR
+        FLOOR["<b>Floor ops</b><br/>RTA Analyst · Supervisor · Operations Manager"]
+        PLAT["<b>Platform ops</b><br/>Platform Admin · Tenant Admin · Automation Engineer"]
+        LEAD["<b>Leadership</b><br/>VP"]
+    end
+
+    subgraph CAPTURE ["CAPTURE — 5 tiers, one chosen per environment (D-15)"]
+        direction LR
+        CT1["Tier 1<br/>Native REST"]
+        CT2["Tier 2<br/>Hybrid"]
+        CT3["Tier 3<br/>Browser Ext<br/>(live-proven)"]
+        CT4["Tier 4<br/>Citrix/VDI"]
+        CT5["Tier 5<br/>OCR/Vision"]
+    end
+
+    subgraph PLATFORM ["WFM AUTOMATION PLATFORM — single OCI image, config-driven per tenant (P3)"]
+        direction TB
+        NORM["normalize"]
+        TRIAGE["triage"]
+        BUILD["card_builder"]
+        subgraph CORE ["Adapter-blind Rules Core (P2) — 44 tests, never forks per client"]
+            direction LR
+            NORM --> TRIAGE --> BUILD
+        end
+        LLM["LLM Subsystem<br/>advise / draft only<br/>NO write credential (P1)"]
+        GATE["pending_review / HITL GATE (P5)<br/>approve · edit · suppress · escalate"]
+        CC["Command Center SPA<br/>HITL review surface (D-18)"]
+        DISPATCH["Dispatch Service<br/>only human-approved cards leave (P5)"]
+        BUILD --> GATE
+        BUILD -. "draft copy" .-> LLM
+        LLM -. "no write path" .-> BUILD
+        GATE --> CC
+        CC -- "human decision" --> DISPATCH
+    end
+
+    subgraph SEAMS ["FIVE CLOUD-NEUTRAL SEAMS (P4)"]
+        direction LR
+        S1["Secret Vault"]
+        S2["Op + Audit Store<br/>append-only/WORM"]
+        S3["Intelligence Store"]
+        S4["LLM Endpoint"]
+        S5["Runtime + Gateway"]
+    end
+
+    subgraph EXT ["EXTERNAL SYSTEMS"]
+        direction LR
+        VERINT["Verint<br/>(read + RPA write)"]
+        GTT["GTT"]
+        NICE["NICE IEX"]
+        SNOW["ServiceNow"]
+        CHAT["Google Chat / Teams"]
+        WD["Workday<br/>(identity join key)"]
+    end
+
+    subgraph DEPLOY ["DEPLOYMENT TOPOLOGIES — same image, different manifest (D-05)"]
+        direction LR
+        INCLOUD["In-client-cloud<br/>(bank-tier client)"]
+        VENDOR["Vendor-hosted<br/>(Telus Digital GCP — first target)"]
+    end
+
+    FUTURE["<b>FUTURE</b> (D-20) — Agents · Copilot · ANA · NICE dual-vendor · Data Hub &nbsp;—&nbsp; all still recommend-only, human-approved (P1/P5 hold)"]
+
+    PRIN --> PEOPLE
+    PEOPLE --> CC
+    CAPTURE ==> NORM
+    VERINT --> CAPTURE
+    GTT -.-> CAPTURE
+    NICE -.-> CAPTURE
+    DISPATCH ==> SNOW
+    DISPATCH ==> CHAT
+    DISPATCH ==> VERINT
+    WD -. "resolves identity" .-> PLATFORM
+    PLATFORM -. "binds" .-> SEAMS
+    PLATFORM --> DEPLOY
+    DEPLOY --> FUTURE
+
+    classDef banner fill:#4B286D,stroke:#2b1740,color:#ffffff
+    classDef people fill:#EFEDFF,stroke:#7C53A5,color:#3F2A54
+    classDef capture fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef core fill:#fefce8,stroke:#64748b,stroke-width:2px,color:#1e293b
+    classDef ai fill:#FFF4CE,stroke:#8A6D00,color:#5C4A00
+    classDef human fill:#E3F6D1,stroke:#1F5C09,color:#1F5C09
+    classDef seam fill:#f0fdf4,stroke:#16a34a,stroke-dasharray:5 3,color:#14532d
+    classDef ext fill:#E8E8E8,stroke:#666,color:#2C2C2C
+    classDef deploy fill:#D6E4FF,stroke:#1F3C88,color:#1F3C88
+    classDef future fill:#fdf4ff,stroke:#a855f7,stroke-dasharray:3 2,color:#581c87
+
+    class PRIN banner
+    class FLOOR,PLAT,LEAD people
+    class CT1,CT2,CT3,CT4,CT5 capture
+    class NORM,TRIAGE,BUILD core
+    class LLM ai
+    class GATE,CC,DISPATCH human
+    class S1,S2,S3,S4,S5 seam
+    class VERINT,GTT,NICE,SNOW,CHAT,WD ext
+    class INCLOUD,VENDOR deploy
+    class FUTURE future

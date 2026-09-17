@@ -1,0 +1,77 @@
+%% D-23 Data Architecture Pipeline
+%% Source: gtt_adapter.py, verint_extension/parse.js, gtt_verint_reconciler.py,
+%%         report_intelligence.py, local_api.py — synthesized with D-09/D-10/D-11 (C4)
+%%         and functional-system-map.mmd for framing, not re-derived from them.
+%% Purpose: one consolidated capture -> reconcile -> report -> dispatch view, across
+%%          every clock-in/out source an account may target (GTT live; Verint MyTime
+%%          and PST negotiating API access) -- not just the GTT-shaped path.
+
+flowchart TB
+
+    subgraph clockSources ["CLOCK-IN/OUT SOURCES (attendance ground truth)"]
+        direction LR
+        gttSrc["GTT<br/>(Global Time Tracker)<br/>LIVE — El Salvador"]
+        mytimeSrc["Verint MyTime<br/>NEGOTIATING API ACCESS — Bulgaria"]
+        pstSrc["PST<br/>NEGOTIATING API ACCESS — Philippines"]
+    end
+
+    subgraph verintSrc ["VERINT WFM (schedule + real-time adherence — always present)"]
+        direction LR
+        verintCal["calendar-filter API<br/>schedule, actual activity, OOA duration"]
+    end
+
+    subgraph capture ["CAPTURE"]
+        direction LR
+        gttAdapter["gtt_adapter.py<br/>SA-JWT auth -> GTTRow[]<br/>(retries on transient Google-side rejection)"]
+        extension["Verint browser extension<br/>parse.js / content_cc.js -> AgentRow[]"]
+    end
+
+    subgraph reconcile ["RECONCILE — gtt_verint_reconciler.reconcile()"]
+        direction TB
+        join["Join: exact surname, then fuzzy fallback<br/>(GTTRow <-> AgentRow)"]
+        skip["source=verint_only:<br/>join skipped entirely<br/>(no clock-in source reachable yet)"]
+        report["ReconciliationReport<br/>gtt_total / verint_total / matched<br/>discrepancy_type per agent"]
+        join --> report
+        skip --> report
+    end
+
+    subgraph intelligence ["REPORT + INTELLIGENCE — report_intelligence.py"]
+        direction LR
+        bullets["Deterministic bullets<br/>(absenteeism, ghost sessions, OOA severity)<br/>wording adapts to source (GTT-joined vs Verint-only)"]
+    end
+
+    subgraph dispatch ["DISPATCH — local_api.py"]
+        direction LR
+        genReport["/generate-report"]
+        dispatchAlert["/dispatch-alert<br/>server-side webhook proxy, HITL-gated"]
+    end
+
+    ui["Command Center UI<br/>RTA reviews report + approves alerts"]
+    chat["Google Chat<br/>per-LOB alert / digest delivery"]
+
+    gttSrc -->|"reachable"| gttAdapter
+    mytimeSrc -.->|"not yet reachable"| gttAdapter
+    pstSrc -.->|"not yet reachable"| gttAdapter
+    verintCal --> extension
+
+    gttAdapter -->|"GTTRow[]"| join
+    extension -->|"AgentRow[]"| join
+    extension -->|"AgentRow[] only<br/>(no GTT/MyTime/PST reachable)"| skip
+
+    report --> genReport
+    genReport --> bullets
+    bullets --> ui
+    ui -->|"approve"| dispatchAlert
+    dispatchAlert --> chat
+
+    classDef live fill:#f0fdf4,stroke:#16a34a,color:#14532d
+    classDef negotiating fill:#fefce8,stroke:#ca8a04,color:#713f12
+    classDef core fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef ui fill:#fdf4ff,stroke:#a855f7,color:#581c87
+    classDef ext fill:#f8fafc,stroke:#64748b,color:#1e293b
+
+    class gttSrc live
+    class mytimeSrc,pstSrc negotiating
+    class verintCal,gttAdapter,extension ext
+    class join,skip,report,bullets,genReport,dispatchAlert core
+    class ui,chat ui

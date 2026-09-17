@@ -1,0 +1,76 @@
+flowchart TB
+
+subgraph verintBrowser ["Trust Boundary — RTA Browser (Chromium)"]
+
+  subgraph verintTab ["Verint Tab (wfo.a87.verintcloudservices.com)"]
+    verintApp["Verint WFM SPA"]
+    injectJS["inject.js\n(MAIN world)\nPassive API interceptor"]
+    contentVerint["content_verint.js\n(ISOLATED world)\nMessage relay"]
+  end
+
+  subgraph extensionRuntime ["Chrome Extension Runtime"]
+    bgWorker["background.js\nService Worker\nData accumulator + card builder"]
+    parseJS["parse.js\nCommandCard builder"]
+    badgeUI["Extension badge\n(active card count)"]
+    popupUI["popup.html\nStatus + Sync Now"]
+    captureLog["captureLog\n(metadata only — no PII)"]
+  end
+
+  subgraph commandCenterTab ["RTA Command Center Tab (localhost → Cloud Run)"]
+    contentCC["content_cc.js\n(ISOLATED world)\nMessage bridge"]
+    reactApp["React App\nRTA Command Center\n(FuelIX AI + HITL)"]
+  end
+
+end
+
+subgraph verintCloud ["Verint Cloud (wfo.a87.verintcloudservices.com)"]
+  verintAPI["Verint WFM REST API\n/api/wfm/main/v2/calendar-filter\n/api/wfm/main/v1/work-resources\n/api/wfm/main/v1/activities"]
+end
+
+subgraph gcpBackend ["GCP Backend (Telus — production)"]
+  backendProxy["Backend API Proxy\nCard events via WebSocket/SSE"]
+  secretStore["Secret Manager\nWebhook URLs, API keys"]
+  auditDB["Audit Log Store\nFirestore — immutable"]
+end
+
+%% Verint SPA fetches its own data normally
+verintApp -->|"Normal HTTPS fetch"| verintAPI
+verintAPI -->|"JSON response"| verintApp
+
+%% inject.js tees the response (read-only, non-blocking)
+verintApp -.->|"fetch() monkey-patch\n(read-only tee)"| injectJS
+injectJS -->|"window.postMessage\n(same-origin)"| contentVerint
+contentVerint -->|"chrome.runtime.sendMessage"| bgWorker
+
+%% Background accumulates and builds cards
+bgWorker --> parseJS
+parseJS -->|"CommandCards[]"| bgWorker
+bgWorker --> badgeUI
+bgWorker --> captureLog
+bgWorker -->|"chrome.tabs.sendMessage"| contentCC
+contentCC -->|"window.dispatchEvent"| reactApp
+
+%% Popup control
+popupUI -->|"push-now / trigger-capture"| bgWorker
+
+%% Production path (GCP)
+reactApp -.->|"WebSocket/SSE\n(production)"| backendProxy
+backendProxy -.->|"Webhook dispatch"| secretStore
+backendProxy -.->|"Audit write"| auditDB
+
+subgraph legend ["Legend"]
+  l1["Solid arrow = Live data flow"]
+  l2["Dashed arrow = Production path (not yet active in POC)"]
+end
+
+classDef automated fill:#4B286D,stroke:#3A1F54,color:#FFFFFF
+classDef aiNode fill:#E3F6D1,stroke:#1F5C09,color:#1F5C09
+classDef humanNode fill:#EFEDFF,stroke:#7C53A5,color:#3F2A54
+classDef auditNode fill:#EFEDFF,stroke:#3F2A54,color:#2C2C2C
+classDef externalNode fill:#E8E8E8,stroke:#666666,color:#2C2C2C
+
+class injectJS,contentVerint,bgWorker,parseJS automated
+class reactApp,contentCC aiNode
+class popupUI,badgeUI humanNode
+class captureLog,auditDB auditNode
+class verintAPI,backendProxy,secretStore externalNode

@@ -1,0 +1,86 @@
+{
+  "schema_version": 1,
+  "diagram_type": "architecture",
+  "meta": {
+    "title": "Production Hosting — Telus Digital GCP",
+    "subtitle": "Telus-hosted target (Topology B). Bank-tier clients deploy separately, in-client-cloud on Azure (AC-005).",
+    "output": "D-21-production-gcp-hosting.html",
+    "quality_profile": "showcase",
+    "repository": {
+      "url": "https://github.com/MateusPoatek/RTA_Command_Center",
+      "revision": "de981e990567e59423d711e61218cf09b9b9529a",
+      "link_mode": "local-only"
+    }
+  },
+  "layout": { "mode": "grid", "origin": [40, 40], "cols": 4, "gapX": 70, "gapY": 140, "cellW": 210, "cellH": 64 },
+  "components": [
+    { "id": "verintTenant", "type": "external", "label": "Verint WFM Tenant", "sublabel": "calendar-filter API", "row": 0, "col": 0, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 12, "label": "wfmNetwork" } ] },
+    { "id": "gttApi", "type": "external", "label": "GTT ATOS API", "sublabel": "GCP-hosted, SA token", "row": 0, "col": 1, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 13 } ] },
+    { "id": "niceIex", "type": "external", "label": "NICE IEX", "sublabel": "future — not yet integrated", "row": 0, "col": 2, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 14 } ] },
+    { "id": "legacyProjects", "type": "cloud", "label": "Legacy GCP", "sublabel": "Telus Intl, decommissioning", "row": 0, "col": 3, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 18 } ] },
+
+    { "id": "cloudRun", "type": "backend", "label": "Cloud Run", "sublabel": "capture + reconciliation", "row": 1, "col": 0, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 24 }, { "path": "POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md", "line": 268, "label": "Cloud Run choice" } ] },
+    { "id": "cloudScheduler", "type": "backend", "label": "Cloud Scheduler", "sublabel": "report cron", "row": 1, "col": 1, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 25 } ] },
+    { "id": "cloudTasks", "type": "backend", "label": "Cloud Tasks", "sublabel": "dispatch queue, via Pub/Sub", "row": 1, "col": 2, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 26 } ] },
+
+    { "id": "cloudSql", "type": "database", "label": "Cloud SQL", "sublabel": "Postgres, operational state", "row": 2, "col": 0, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 34 } ] },
+    { "id": "firestore", "type": "database", "label": "Firestore", "sublabel": "WORM audit log", "row": 2, "col": 1, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 35 } ] },
+    { "id": "cloudStorage", "type": "database", "label": "Cloud Storage", "sublabel": "reports, 90d+", "row": 2, "col": 2, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 36 } ] },
+    { "id": "secretManager", "type": "security", "label": "Secret Manager", "sublabel": "tokens, keys, webhooks", "row": 2, "col": 3, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 37 } ] },
+
+    { "id": "aaControlRoom", "type": "backend", "label": "RPA Engine", "sublabel": "~18 VMs, ~125 bots", "row": 3, "col": 0, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 43 } ] },
+    { "id": "intelligentInsights", "type": "backend", "label": "Intel. Insights", "sublabel": "SOC 2 Type II audit spine", "row": 3, "col": 1, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 44 } ] },
+    { "id": "chatSheets", "type": "external", "label": "Chat / Sheets", "sublabel": "existing webhooks", "row": 3, "col": 2, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 48 } ] },
+    { "id": "commandCenterUi", "type": "frontend", "label": "Command Center UI", "sublabel": "Floor View + HITL gate", "row": 3, "col": 3, "size": [190, 60],
+      "sources": [ { "path": "POC_Redefined/docs/diagrams/sources/command-center-infrastructure.mmd", "line": 49 } ] },
+
+    { "id": "lookerStudio", "type": "backend", "label": "Looker Studio", "sublabel": "cross-account dashboards", "row": 4, "col": 1, "size": [190, 60] }
+  ],
+  "boundaries": [
+    { "kind": "region", "label": "WFM Network (source systems)", "wraps": ["verintTenant", "gttApi", "niceIex"] },
+    { "kind": "region", "label": "Legacy Telus Intl GCP — decommissioning", "wraps": ["legacyProjects"] },
+    { "kind": "region", "label": "Telus Digital GCP — target project (IaC / Terraform)", "wraps": ["cloudRun", "cloudScheduler", "cloudTasks", "cloudSql", "firestore", "cloudStorage", "secretManager"] },
+    { "kind": "region", "label": "Existing platform (reuse)", "wraps": ["aaControlRoom", "intelligentInsights", "lookerStudio"] },
+    { "kind": "region", "label": "Dispatch / Consumers", "wraps": ["chatSheets", "commandCenterUi"] }
+  ],
+  "connections": [
+    { "id": "verint-to-cloudrun", "from": "verintTenant", "to": "cloudRun", "label": "read (extension relay / REST)", "variant": "dashed", "fromSide": "bottom", "toSide": "top", "labelDy": 24 },
+    { "id": "gtt-to-cloudrun", "from": "gttApi", "to": "cloudRun", "label": "SA identity token", "variant": "dashed", "fromSide": "bottom", "toSide": "top" },
+    { "id": "scheduler-trigger", "from": "cloudScheduler", "to": "cloudRun", "label": "triggers", "fromSide": "left", "toSide": "right" },
+
+    { "id": "run-to-sql", "from": "cloudRun", "to": "cloudSql", "label": "operational state", "fromSide": "bottom", "toSide": "top", "labelDx": -70 },
+    { "id": "run-to-firestore", "from": "cloudRun", "to": "firestore", "label": "audit log", "fromSide": "bottom", "toSide": "top", "labelDx": 40 },
+    { "id": "run-to-tasks", "from": "cloudRun", "to": "cloudTasks", "label": "enqueue, via Pub/Sub", "fromSide": "bottom", "toSide": "bottom" },
+    { "id": "run-to-storage", "from": "cloudRun", "to": "cloudStorage", "label": "reports/artefacts", "fromSide": "bottom", "toSide": "top" },
+    { "id": "run-to-secrets", "from": "cloudRun", "to": "secretManager", "label": "reads secrets", "fromSide": "bottom", "toSide": "top" },
+
+    { "id": "run-to-insights", "from": "cloudRun", "to": "intelligentInsights", "label": "telemetry", "variant": "dashed", "fromSide": "left", "toSide": "top", "via": [[-40, 274], [-40, 600], [415, 600]], "labelDy": 18 },
+    { "id": "run-to-ui", "from": "cloudRun", "to": "commandCenterUi", "label": "serves UI/API", "fromSide": "right", "toSide": "bottom", "via": [[250, 274], [250, 950], [975, 950]], "labelAt": [600, 936] },
+    { "id": "tasks-to-chat", "from": "cloudTasks", "to": "chatSheets", "label": "HITL-gated dispatch", "variant": "emphasis", "fromSide": "top", "toSide": "top", "via": [[695, 150], [1180, 150], [1180, 620], [695, 620]] },
+
+    { "id": "aa-orchestrates", "from": "aaControlRoom", "to": "cloudRun", "label": "orchestrates", "variant": "dashed", "fromSide": "left", "toSide": "left", "via": [[0, 682], [0, 274]], "labelDy": 24 },
+
+    { "id": "insights-to-looker", "from": "intelligentInsights", "to": "lookerStudio", "label": "dashboards", "fromSide": "bottom", "toSide": "top", "labelAt": [415, 782] }
+  ],
+  "cards": [
+    { "dot": "amber", "title": "Open gap — do not build against this until resolved", "items": ["WFM-network connectivity from Verint/GTT into the new GCP project is unconfirmed (AD-009, R-11) — compute is provisioned but not yet reachable", "GCP region is not yet chosen", "No VPC/subnet/peering design exists yet anywhere in the repo"] },
+    { "dot": "emerald", "title": "Reuse, not rebuild", "items": ["RPA Engine keeps orchestrating — not replaced", "Intelligent Insights stays the audit/observability spine (SOC 2 Type II); also ingests Firestore's audit log", "Looker Studio added alongside Intelligent Insights for cross-account dashboards/reporting — GCP-native, no new vendor", "Avoids duplicating existing run-cost (BO-07)"] },
+    { "dot": "slate", "title": "Not yet live", "items": ["NICE IEX capture adapter is a planned expansion, not built", "Legacy Telus Intl GCP projects migrate into this project via IaC — a migration target, not a runtime dependency"] },
+    { "dot": "cyan", "title": "Cost anchors (2026-07-06 review)", "items": ["Incumbent RPA bot: ~$12-13K/bot/yr", "Shared-services: ~$3 CAD/VM-hr + ~$15-16K/yr/bot (L1-L3)", "New GCP project budget: $500 initial (adjustable)"] },
+    { "dot": "amber", "title": "Under assessment — not yet decided", "items": ["One shared GCP project (isolated by tenant manifest, today's POC model) vs. one dedicated GCP project per account, for future production environments"] }
+  ]
+}

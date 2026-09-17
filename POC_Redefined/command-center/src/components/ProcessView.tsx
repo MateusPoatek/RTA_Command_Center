@@ -15,7 +15,7 @@
  */
 
 import { useState } from "react";
-import type { CardAction, CommandCard, LOBHealth, ProcessId, ReportItem, ReconciliationReport, ReportConfig, DiscrepancyRow } from "../domain/types";
+import type { CardAction, CommandCard, LOBHealth, ProcessId, ReportItem, ReconciliationReport, ReportConfig, DiscrepancyRow, ReportHistoryEntry } from "../domain/types";
 import { PROCESSES } from "../domain/types";
 import { getActiveSorted, getPrimaryAction, primaryActionLabel, statusLabel } from "../utils/cardHelpers";
 import { DispatchFeed } from "./DispatchFeed";
@@ -147,10 +147,11 @@ interface ProcessPanelProps {
   onSelectReport: (report: AttendanceReportData) => void;
   reportPayload?: ReconciliationReport | null;
   reportConfig?: ReportConfig;
+  reportSnapshotsToday?: ReportHistoryEntry[];
   onOpenReportConfig?: () => void;
 }
 
-function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, dispatchLog, onAction, onSelectEntry, onSelectReport, reportPayload, reportConfig, onOpenReportConfig }: ProcessPanelProps) {
+function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, dispatchLog, onAction, onSelectEntry, onSelectReport, reportPayload, reportConfig, reportSnapshotsToday, onOpenReportConfig }: ProcessPanelProps) {
   const [expandedLob, setExpandedLob] = useState<string | null>(null);
 
   // Cards relevant to this process
@@ -237,6 +238,9 @@ function ProcessPanel({ processId, cards, lobData, reports, attendanceReports, d
           <GttReportDashboard
             report={reportPayload}
             visibleColumns={reportConfig.visibleColumns as (keyof DiscrepancyRow)[]}
+            snapshotsToday={reportSnapshotsToday ?? []}
+            cards={cards}
+            accountLabel={reportPayload.functional_area}
             onOpenConfig={onOpenReportConfig ?? (() => {})}
           />
         )}
@@ -417,10 +421,11 @@ interface ProcessViewProps {
   onAction: (action: CardAction, cardId: string) => void;
   reportPayload?: ReconciliationReport | null;
   reportConfig?: ReportConfig;
+  reportSnapshotsToday?: ReportHistoryEntry[];
   onOpenReportConfig?: () => void;
 }
 
-export function ProcessView({ cards, lobData, reports, attendanceReports, dispatchLog, onAction, reportPayload, reportConfig, onOpenReportConfig }: ProcessViewProps) {
+export function ProcessView({ cards, lobData, reports, attendanceReports, dispatchLog, onAction, reportPayload, reportConfig, reportSnapshotsToday, onOpenReportConfig }: ProcessViewProps) {
   const [activeProcess, setActiveProcess]       = useState<ProcessId>("adherence");
   const [selectedEntry,  setSelectedEntry]      = useState<DispatchEntry | null>(null);
   const [selectedReport, setSelectedReport]     = useState<AttendanceReportData | null>(null);
@@ -472,6 +477,7 @@ export function ProcessView({ cards, lobData, reports, attendanceReports, dispat
             onSelectReport={setSelectedReport}
             reportPayload={reportPayload}
             reportConfig={reportConfig}
+            reportSnapshotsToday={reportSnapshotsToday}
             onOpenReportConfig={onOpenReportConfig}
           />
         </div>

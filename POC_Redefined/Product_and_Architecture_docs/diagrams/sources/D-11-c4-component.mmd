@@ -1,0 +1,45 @@
+%% D-11 C4 Component
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md §2;
+%%         folds in docs/engineering/diagrams/mmd/02-adapter-spine.mmd as component detail
+%% Purpose: zoom into the Rules Core Service container from D-10 — the adapter-blind
+%%          AgentRow[] pipeline (normalize -> triage -> card_builder) and the
+%%          pending_review / HITL gate every CommandCard passes through before dispatch (P5)
+
+C4Component
+
+Container(gateway, "API Gateway", "OIDC · MFA · RBAC", "Forwards validated AgentRow[] from whichever capture adapter is active — the core never knows which one (P2)")
+Container(push, "Push Service", "WSS / SSE", "Streams CardEvents to the Command Center SPA")
+Container(dispatch, "Dispatch Service", "Swappable workers", "Delivers only cards that have exited pending_review (P5)")
+Container(opstore, "Operational + Audit Store", "cloud-neutral seam", "Append-only/WORM; every card state transition is logged")
+Container(llm, "LLM Subsystem", "Backend proxy", "Advise/draft only — no write credential (P1)")
+Person(rta, "RTA Analyst", "Approves / edits / suppresses / escalates")
+
+Container_Boundary(core, "Rules Core Service  (adapter-blind, 44 tests, never changes per adapter — P2)") {
+
+    Component(normalize, "verint_normalize", "Function", "AgentRow[] in any capture-adapter shape -> the one canonical AgentRow contract (agent_id, lob[from config], geo, status, scheduled, duration_s, adherence%)")
+
+    Component(triage, "verint_triage", "Function", "Applies rule thresholds; consumes Verint's own out-of-adherence verdict rather than re-deriving one")
+
+    Component(cardbuilder, "card_builder", "Function", "Builds CommandCard[] with severity, confidence, rule provenance, and a drafted message")
+
+    Component(exception, "Exception handling", "Function", "Row that fails to normalize -> CommandCard{type: exception, confidence: 0.0, targetChannels: [audit-only]} — never silently dropped")
+
+    Component(gate, "pending_review / HITL gate", "State gate", "Every CommandCard is created in pending_review and stays there until an RTA acts — the only exit is a human decision (P5)")
+
+    Rel(normalize, triage, "canonical AgentRow[]")
+    Rel(triage, cardbuilder, "triaged rows + OOA verdict")
+    Rel(normalize, exception, "unparseable row")
+    Rel(exception, gate, "exception CommandCard (confidence 0.0)")
+    Rel(cardbuilder, gate, "CommandCard[] (status: pending_review)")
+}
+
+Rel(gateway, normalize, "AgentRow[] (adapter-blind input)")
+Rel(cardbuilder, llm, "requests drafted message / advisory reasoning")
+Rel(gate, push, "streams pending_review cards for review")
+Rel(rta, gate, "approve / edit / suppress / escalate (human decision)")
+Rel(gate, dispatch, "releases CommandCard only after human decision (P5)")
+Rel(gate, opstore, "logs every state transition (append-only)")
+
+%% Note: Mermaid C4Component has no native "state machine" shape for pending_review;
+%% it is modeled as a Component with the gate's entry/exit conditions in its
+%% description, since that is the load-bearing HITL invariant from P5.

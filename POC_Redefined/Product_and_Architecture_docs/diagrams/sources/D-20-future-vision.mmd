@@ -1,0 +1,48 @@
+%% D-20 Future Vision
+%% Source: docs/engineering/SYSTEM_ARCHITECTURE.md (today's spine) + BRD Vol 5 roadmap intent
+%% Purpose: today's platform at the core, future capabilities radiating out as extensions of the same adapter-blind, HITL-governed spine (P1/P2/P5 carry forward)
+
+flowchart TB
+
+    %% ── Today: the proven spine (solid) ─────────────────────────────────
+    subgraph TODAY ["TODAY — production spine"]
+        direction LR
+        Cap["Capture Adapters<br/>(swappable, P2)"]
+        Core["Stable Rules Core<br/>normalize → triage → card_builder<br/>(adapter-blind, 44 tests, P2)"]
+        LLM["LLM Endpoint<br/>advise/draft only — no write path (P1)"]
+        HITL["HITL Review<br/>CommandCard stays pending_review<br/>until a human acts (P5)"]
+        Dispatch["Dispatch Adapters<br/>(swappable, P2)"]
+
+        Cap --> Core
+        Core -. "advise/draft only" .-> LLM
+        LLM -. "no write path" .-> Core
+        Core --> HITL
+        HITL -- "human approves" --> Dispatch
+    end
+
+    %% ── Future: extensions radiating from the same spine (dashed) ───────
+    subgraph FUTURE ["FUTURE — extensions of the same spine (still P1/P2/P5)"]
+        direction TB
+        Agents["Agents<br/>(future)<br/>autonomous drafting, still no write path"]
+        Copilot["Copilot<br/>(future)<br/>RTA-facing assistant, advise only"]
+        ANA["ANA<br/>(future)<br/>analytics / next-best-action, recommends only"]
+        NICE["NICE IEX<br/>(future — dual-vendor capture)<br/>joins Verint as a second capture adapter"]
+        DataHub["Data Hub<br/>(future)<br/>enterprise data integration"]
+    end
+
+    Agents -. "recommends → still needs" .-> HITL
+    Copilot -. "recommends → still needs" .-> HITL
+    ANA -. "recommends → still needs" .-> HITL
+    NICE -. "new capture adapter, same contract" .-> Core
+    DataHub -. "feeds / consumes" .-> Core
+
+    %% ── Styles ───────────────────────────────────────────────────────────
+    classDef today   fill:#fefce8,stroke:#64748b,stroke-width:2px,color:#1e293b
+    classDef ai      fill:#fdf4ff,stroke:#a855f7,color:#581c87
+    classDef hitl    fill:#eef2ff,stroke:#4f46e5,stroke-width:2px,color:#3730a3
+    classDef future  fill:#ffffff,stroke:#0ea5e9,stroke-width:2px,stroke-dasharray:5 3,color:#0c4a6e
+
+    class Cap,Core,Dispatch today
+    class LLM ai
+    class HITL hitl
+    class Agents,Copilot,ANA,NICE,DataHub future

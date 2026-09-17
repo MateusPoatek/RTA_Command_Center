@@ -1,7 +1,7 @@
 /**
  * ReportChartsPanel.tsx — charts tab for the GTT × Verint reconciliation report.
  *
- * Seven visualizations, each chosen for the job the data actually does
+ * Eight visualizations, each chosen for the job the data actually does
  * (dataviz skill's form table), not defaulted to bar/pie:
  *   1. Productive hours, projected vs. so far — a METER (ratio against a limit)
  *   2. GTT event mix — donut, top-5 + "Other" (skill anti-pattern: uncapped
@@ -15,6 +15,9 @@
  *   7. Adherence split — 2-slice pie (in vs. out of adherence), requested
  *      explicitly; a standard WFM convention despite the skill's general
  *      preference for a stat tile at 2 slices
+ *   8. GTT vs. Verint totals (today) — two-LINE chart sharing one axis
+ *      (both series are the same unit: headcount), one point per scheduled
+ *      or manual generation today. Empty until the first generation.
  *
  * Categorical color set (CHART_COLORS below) is a SEPARATE palette from this
  * app's severity colors (--critical/--high/--medium/--low/--info) — those are
@@ -24,11 +27,12 @@
  * app's actual light surface.
  */
 
+import { memo } from "react";
 import {
-  PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area,
+  PieChart, Pie, Cell, BarChart, Bar, AreaChart, Area, LineChart, Line,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
-import type { ReconciliationReport, DiscrepancyRow, HourlyAttendanceBucket } from "../domain/types";
+import type { ReconciliationReport, DiscrepancyRow, HourlyAttendanceBucket, ReportHistoryEntry } from "../domain/types";
 
 const CHART_COLORS = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#4a3aa7"];
 const EMPHASIS_COLOR = CHART_COLORS[0];
@@ -236,8 +240,10 @@ function UtilizationChart({ rows }: { rows: DiscrepancyRow[] }) {
 // ---------------------------------------------------------------------------
 
 function AbsenteeismStat({ rows, verintTotal }: { rows: DiscrepancyRow[]; verintTotal: number }) {
+  // in_adherence_no_clock_in is NOT absenteeism — that agent has real Verint
+  // activity, just no GTT clock-in. Only count real gaps.
   const absentCount = rows.filter(
-    (r) => r.discrepancy_type === "clocked_in_not_in_adherence" || r.discrepancy_type === "in_adherence_no_clock_in",
+    (r) => r.discrepancy_type === "clocked_in_not_in_adherence" || r.discrepancy_type === "no_clock_in_no_activity",
   ).length;
   const rate = verintTotal > 0 ? (absentCount / verintTotal) * 100 : 0;
 
@@ -288,10 +294,65 @@ function AdherenceSplitChart({ rows }: { rows: DiscrepancyRow[] }) {
 }
 
 // ---------------------------------------------------------------------------
+// 8. GTT vs. Verint totals — today's scheduled + manual generations
+// ---------------------------------------------------------------------------
+// GTT's total grows through the day as more agents clock in; Verint's
+// captured roster only reflects whatever was last pulled. Same unit
+// (headcount) across both series, so one shared axis is correct here —
+// unlike Attendance Evolution above, which deliberately keeps agent-count
+// and productive-minutes on separate charts.
+
+function GttVsVerintChart({ snapshots }: { snapshots: ReportHistoryEntry[] }) {
+  if (snapshots.length === 0) {
+    return <EmptyCard title="GTT vs. Verint Totals — Today" message="No generations yet today." />;
+  }
+  const data = snapshots.map((s) => ({
+    label: new Date(s.generated_at).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" }),
+    gtt_total: s.gtt_total,
+    verint_total: s.verint_total,
+  }));
+  const latest = snapshots[snapshots.length - 1];
+  const gap = latest.gtt_total - latest.verint_total;
+
+  return (
+    <div className="rcp-card rcp-card--wide">
+      <div className="rcp-card__title">
+        GTT vs. Verint Totals — Today
+        {gap !== 0 && ` (${Math.abs(gap)} ${gap > 0 ? "more in GTT" : "more in Verint"} as of last generation)`}
+      </div>
+      <div className="rcp-card__sublabel">One point per report generation (manual or scheduled)</div>
+      <ResponsiveContainer width="100%" height={130}>
+        <LineChart data={data} margin={{ top: 4, right: 8, left: 0, bottom: 0 }}>
+          <XAxis dataKey="label" tick={{ fontSize: 10 }} axisLine={{ stroke: "var(--border)" }} tickLine={false} />
+          <YAxis tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={28} />
+          <Tooltip />
+          <Line type="monotone" dataKey="gtt_total" name="GTT total" stroke={CHART_COLORS[0]} strokeWidth={2} dot />
+          <Line type="monotone" dataKey="verint_total" name="Verint total" stroke={CHART_COLORS[1]} strokeWidth={2} dot />
+        </LineChart>
+      </ResponsiveContainer>
+      <div className="rcp-legend">
+        <span className="rcp-legend__item"><span className="rcp-legend__dot" style={{ background: CHART_COLORS[0] }} />GTT total</span>
+        <span className="rcp-legend__item"><span className="rcp-legend__dot" style={{ background: CHART_COLORS[1] }} />Verint total</span>
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
 // Main export
 // ---------------------------------------------------------------------------
 
-export function ReportChartsPanel({ report }: { report: ReconciliationReport }) {
+// Memoized: App.tsx keeps all state in one component, and several always-
+// running 1s timers (live-bridge heartbeat, batch countdown, live-engine
+// scan) re-render the whole tree every second regardless of whether report
+// data changed. Without this, Recharts saw "new" data on every one of those
+// ticks and re-triggered its enter animations on all 8 charts each time —
+// increasingly expensive as the report's discrepancy rows accumulate over a
+// shift, which is why it visibly got slower over time rather than starting
+// slow. `report`/`snapshotsToday` are otherwise referentially stable across
+// those ticks (they only change on an actual report generation), so this
+// correctly skips the vast majority of re-renders.
+export const ReportChartsPanel = memo(function ReportChartsPanel({ report, snapshotsToday }: { report: ReconciliationReport; snapshotsToday?: ReportHistoryEntry[] }) {
   const rows = report.discrepancies;
   // Defensive fallbacks: a report generated by an older backend (before these
   // fields existed) or loaded from a stale cached file won't have them at
@@ -300,15 +361,19 @@ export function ReportChartsPanel({ report }: { report: ReconciliationReport }) 
   // page down to a blank screen instead of just an empty chart.
   const eventCounts = report.gtt_event_type_counts ?? {};
   const hourly = report.hourly_attendance ?? [];
+  // GTT×Verint comparison charts are meaningless in verint_only mode — GTT
+  // was never queried, so they'd just show a permanent "no GTT data" empty
+  // state instead of a real gap.
   return (
     <div className="rcp-grid">
       <ProductiveHoursMeter rows={rows} generatedAt={report.generated_at} />
-      <GttEventMixChart counts={eventCounts} />
+      {report.source !== "verint_only" && <GttEventMixChart counts={eventCounts} />}
       <PeakHourChart hourly={hourly} />
       <AttendanceEvolutionChart hourly={hourly} />
       <UtilizationChart rows={rows} />
       <AbsenteeismStat rows={rows} verintTotal={report.verint_total} />
       <AdherenceSplitChart rows={rows} />
+      {report.source !== "verint_only" && <GttVsVerintChart snapshots={snapshotsToday ?? []} />}
     </div>
   );
-}
+});

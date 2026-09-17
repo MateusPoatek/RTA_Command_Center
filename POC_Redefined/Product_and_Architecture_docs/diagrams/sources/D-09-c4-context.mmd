@@ -1,0 +1,38 @@
+%% D-09 C4 Context
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md, POC_Redefined/docs/engineering/CONNECTOR_CATALOG.md
+%% Purpose: the WFM Automation Platform in its enterprise context — personas and external systems around one system; platform recommends, humans/external systems receive only approved dispatch (P1/P5)
+
+C4Context
+
+Person(rta, "RTA Analyst", "Monitors adherence in real time; reviews and approves/edits/suppresses CommandCards (HITL)")
+Person(supervisor, "Supervisor", "Receives escalations and dispatched alerts for their LOB")
+Person(om, "Operations Manager", "Receives outage/escalation cards; oversees floor-level response")
+Person(admin, "Platform Admin", "Configures tenant manifest, thresholds, LOB routing, connector registry")
+
+System(platform, "WFM Automation Platform", "Adapter-blind rules core turns Verint (and future WFM sources) into reviewable CommandCards; a human approves every external write (P1/P5)")
+
+System_Ext(verint, "Verint", "System of record for schedule + real-time adherence (read-only capture; RPA is the only approved write channel)")
+System_Ext(gtt, "GTT (Global Time Tracker)", "Attendance / time-tracking reconciliation source (generalization target, §9 Connector Catalog)")
+System_Ext(snow, "ServiceNow", "Incident/ticketing target — REST dispatch, not MCP")
+System_Ext(chat, "Google Chat", "Per-LOB approved-alert delivery channel")
+System_Ext(teams, "Microsoft Teams", "Alternate/supervisor alert delivery channel")
+System_Ext(workday, "Workday", "Canonical employee identity / join key across systems")
+System_Ext(nice, "NICE IEX", "Alternate WFM vendor (dual-vendor reach; same-shape capture target)")
+
+Rel(rta, platform, "Reviews, approves, edits, suppresses CommandCards")
+Rel(supervisor, platform, "Views escalated cards")
+Rel(om, platform, "Views outage/escalation cards")
+Rel(admin, platform, "Configures tenant manifest, thresholds, connectors")
+
+Rel(platform, verint, "Reads schedule/adherence (read-only capture)")
+Rel(platform, verint, "Writes approved schedule corrections only via deterministic RPA (human-gated, P5)")
+Rel(platform, gtt, "Reads attendance/time-tracking data (planned capture)")
+Rel(platform, snow, "Creates incidents for approved escalations (REST, human-gated)")
+Rel(platform, chat, "Delivers approved alerts, per-LOB")
+Rel(platform, teams, "Delivers approved alerts (alternate channel)")
+Rel(platform, workday, "Resolves canonical employee ID (join key)")
+Rel(platform, nice, "Reads schedule/adherence (planned capture, same shape)")
+
+%% Note: Mermaid C4Context has no native way to visually distinguish "recommend-only"
+%% vs "write" edges beyond relationship labels; P1 (no AI write path) and P5
+%% (human-gated dispatch) are therefore expressed in Rel() text, not a syntax construct.

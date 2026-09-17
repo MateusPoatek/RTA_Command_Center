@@ -53,8 +53,10 @@ import type {
   LearningSignal,
   ReconciliationReport,
   ReportConfig,
+  ReportHistoryEntry,
 } from "./domain/types";
-import { ACCOUNTS, DEFAULT_REPORT_CONFIG, isAccountCard } from "./domain/types";
+import { ACCOUNTS, isAccountCard } from "./domain/types";
+import { defaultReportConfigFor, ACCOUNT_CATALOG } from "./domain/accounts";
 
 // Shared
 import { formatChannel } from "./shared/channelConfig";
@@ -65,8 +67,9 @@ import { useLiveEngine } from "./hooks/useLiveEngine";
 import { useExtensionBridge } from "./hooks/useExtensionBridge";
 import type { VerintRosterRow } from "./hooks/useExtensionBridge";
 import { useCaptureScheduler } from "./hooks/useCaptureScheduler";
+import { useReportScheduler } from "./hooks/useReportScheduler";
 import { CaptureConfigModal, type CaptureSystem } from "./components/CaptureConfigModal";
-import { ReportConfigPanel, saveHistoryEntry } from "./components/ReportConfigPanel";
+import { ReportConfigPanel, saveHistoryEntry, loadReportConfig } from "./components/ReportConfigPanel";
 
 // Components
 import { CommandBar }         from "./components/CommandBar";
@@ -83,6 +86,8 @@ import { AutoActionToast }    from "./components/AutoActionToast";
 
 // Utils
 import { calculateShiftScore } from "./utils/score";
+import { buildGChatAlertBatchCard, buildChatDigestCard } from "./utils/dispatchHelpers";
+import { buildAdherenceSummary } from "./utils/adherenceSummary";
 
 // A single dispatch batch never exceeds this many alerts, even if more are
 // queued — flushBatch() splits a large queue into several same-size-or-smaller
@@ -241,31 +246,99 @@ function App() {
   const aiHandledCount = learningSignals.filter((s) => s.decision === "accepted").length;
 
   // -- GTT × Verint reconciliation report -----------------------------------
+  // Every piece of report state here is scoped to activeAccount — a shared
+  // slot was the root of the account-mixing bug (switching EPIC → CORELOGIC
+  // kept showing EPIC's report, roster, and functionalArea/sites config).
   const [reportPayload,    setReportPayload]    = useState<ReconciliationReport | null>(null);
   const [reportConfigOpen, setReportConfigOpen] = useState(false);
-  const [reportConfig,     setReportConfig]     = useState<ReportConfig>(DEFAULT_REPORT_CONFIG);
+  const [reportConfig,     setReportConfig]     = useState<ReportConfig>(() => loadReportConfig(activeAccount, defaultReportConfigFor(activeAccount)));
+  // Today's generations (manual + scheduled), for the GTT-vs-Verint totals
+  // chart. Resets when the calendar day rolls over — no multi-day history.
+  const [reportSnapshotsToday, setReportSnapshotsToday] = useState<ReportHistoryEntry[]>([]);
+  const snapshotsDayRef = useRef<string>(new Date().toISOString().slice(0, 10));
 
-  // Walk back up to 3 days to find the most recent generated report.
-  const fetchLatestReport = useCallback(async () => {
+  // Walk back up to 3 days to find the most recent report for THIS account.
+  const fetchLatestReport = useCallback(async (account: AccountId): Promise<ReconciliationReport | null> => {
     for (let daysBack = 0; daysBack < 4; daysBack++) {
       const d = new Date();
       d.setDate(d.getDate() - daysBack);
       const dateStr = d.toISOString().slice(0, 10);
       try {
-        const r = await fetch(`/runs/reports/reconciliation_${dateStr}.json`);
+        const r = await fetch(`/runs/reports/reconciliation_${account}_${dateStr}.json`);
         if (r.ok) {
           const data: ReconciliationReport = await r.json();
           setReportPayload(data);
-          return;
+          return data;
         }
       } catch (e) {
         console.warn('[report] fetch error:', e);
       }
     }
-    console.warn('[report] no report found in the last 4 days');
+    console.warn(`[report] no report found for ${account} in the last 4 days`);
+    setReportPayload(null);
+    return null;
   }, []);
 
-  useEffect(() => { fetchLatestReport(); }, [fetchLatestReport]);
+  // Appends a fresh generation to today's snapshot series (manual + scheduled
+  // both funnel through here); resets the series on a calendar-day rollover
+  // since the chart is "today only" by design.
+  const appendReportSnapshot = useCallback((report: ReconciliationReport) => {
+    const today = new Date().toISOString().slice(0, 10);
+    if (snapshotsDayRef.current !== today) {
+      snapshotsDayRef.current = today;
+      setReportSnapshotsToday([]);
+    }
+    const entry: ReportHistoryEntry = {
+      date: report.date,
+      gtt_total: report.gtt_total,
+      verint_total: report.verint_total,
+      matched: report.matched,
+      discrepancy_count: report.discrepancy_count,
+      intelligence: report.intelligence,
+      generated_at: report.generated_at,
+    };
+    setReportSnapshotsToday((prev) => [...prev, entry]);
+  }, []);
+
+  // The Verint rows to send with the next report generation always come from
+  // the latest bridge push — a ref (populated below, once verintRoster
+  // exists) avoids a stale closure in the scheduler's setTimeout chain.
+  const verintRosterRef = useRef<VerintRosterRow[]>([]);
+
+  // Shared by the manual "Generate Report" button and the scheduler: POST to
+  // the local API, load the result back, and record it in today's series.
+  // Always generates for whichever account is CURRENTLY active — reads
+  // activeAccount fresh via a ref (see below) so a scheduled generation
+  // queued before an account switch still targets the right account.
+  const activeAccountRef = useRef<AccountId>(activeAccount);
+  useEffect(() => { activeAccountRef.current = activeAccount; }, [activeAccount]);
+
+  const generateReport = useCallback(async () => {
+    const account = activeAccountRef.current;
+    const today = new Date().toISOString().slice(0, 10);
+    try {
+      const res = await fetch("/api/generate-report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          date: today,
+          account,
+          source: reportConfig.source,
+          functional_area: reportConfig.functionalArea,
+          sites: reportConfig.sites,
+          verint_rows: verintRosterRef.current,
+        }),
+      });
+      if (res.ok) {
+        const report = await fetchLatestReport(account);
+        if (report) appendReportSnapshot(report);
+        return;
+      }
+    } catch {/* API not running — fall through to disk load */}
+    const report = await fetchLatestReport(account);
+    if (report) appendReportSnapshot(report);
+  }, [reportConfig.source, reportConfig.functionalArea, reportConfig.sites, fetchLatestReport, appendReportSnapshot]);
+
 
   // ---------------------------------------------------------------------------
   // Autonomous mode handler — called by useLiveEngine when AI acts on a card
@@ -313,13 +386,15 @@ function App() {
   // and flips on a "LIVE" banner so it's obvious the data is real.
   const [liveBridgeActive, setLiveBridgeActive] = useState(false);
   const [lastSynced, setLastSynced] = useState<string | null>(null);
-  // Persisted so a page reload (or a dev-server HMR full-reload) doesn't
-  // silently wipe the captured roster and make the next "Report" click send
-  // verint_rows: [] — that happened repeatedly and produced a GTT-only report
-  // with no explanation, since the UI still showed "Report" as available.
+  // Persisted per-account (a shared key was part of the account-mixing bug —
+  // switching accounts kept the PREVIOUS account's roster in memory and sent
+  // it as verint_rows for the new account's report) so a page reload (or a
+  // dev-server HMR full-reload) doesn't silently wipe the captured roster
+  // and make the next "Report" click send verint_rows: [] either.
+  const verintRosterKey = (account: AccountId) => `rta.verintRoster.${account}`;
   const [verintRoster, setVerintRoster] = useState<VerintRosterRow[]>(() => {
     try {
-      const saved = localStorage.getItem("rta.verintRoster");
+      const saved = localStorage.getItem(verintRosterKey(activeAccount));
       return saved ? JSON.parse(saved) : [];
     } catch {
       return [];
@@ -328,12 +403,13 @@ function App() {
   useEffect(() => {
     try {
       if (verintRoster.length > 0) {
-        localStorage.setItem("rta.verintRoster", JSON.stringify(verintRoster));
+        localStorage.setItem(verintRosterKey(activeAccount), JSON.stringify(verintRoster));
       }
     } catch {
       /* localStorage full/unavailable — roster still works for this session */
     }
-  }, [verintRoster]);
+  }, [verintRoster, activeAccount]);
+  useEffect(() => { verintRosterRef.current = verintRoster; }, [verintRoster]);
   // Which surface fills the left panel: the priority feed, or the spatial Floor View.
   const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
   useExtensionBridge((liveCards, syncedAt, roster) => {
@@ -380,6 +456,66 @@ function App() {
   }, [captureSystem, postToExtension, startCapture]);
 
   useCaptureScheduler(captureFrequency, triggerCaptureTick);
+
+  // Scheduled report trigger: ask the extension for a fresh Full Capture
+  // first (per Mateus — GTT's total grows through the day as more agents
+  // clock in, so Verint's roster needs to be re-pulled or the two totals
+  // just drift apart), force a push once it's had time to run, then generate.
+  const generateScheduledReport = useCallback(() => {
+    postToExtension("run-full-capture");
+    window.setTimeout(() => {
+      postToExtension("push-now"); // guarantee delivery regardless of autoPush
+      window.setTimeout(() => { generateReport(); }, 2000);
+    }, 20_000); // Full Capture "only lasts seconds" per popup.js — generous margin
+  }, [postToExtension, generateReport]);
+
+  useReportScheduler(reportConfig.schedule, generateScheduledReport);
+
+  // Attendance + Adherence digest to Google Chat — independent of the report
+  // GENERATION schedule above; this just formats+sends whatever Attendance
+  // report and live Adherence state already exist right now. Manual trigger
+  // (Report Config's "Send Now" button) reuses this same function.
+  const sendChatDigest = useCallback(() => {
+    const accountCards = cards.filter((c) => !isAccountCard(c.lob) || c.lob === activeAccount);
+    const adherence = buildAdherenceSummary(accountCards);
+    const label = ACCOUNT_CATALOG[activeAccount]?.label ?? activeAccount;
+    const card = buildChatDigestCard(reportPayload, adherence, label);
+    fetch("/api/dispatch-alert", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ account: activeAccount, card }),
+    })
+      .then((res) => res.json())
+      .then((data) => { if (!data.ok) console.warn(`[chat-digest] ${data.error}`); })
+      .catch((e) => console.warn("[chat-digest] request failed", e));
+  }, [cards, activeAccount, reportPayload]);
+
+  // Reuses the same generic "fire every N seconds" hook as the capture
+  // frequency timer above — 30 minutes is a fixed cadence for now, not a
+  // user-configurable interval (nothing asked for one yet).
+  useCaptureScheduler(reportConfig.chatDigestEnabled ? 1800 : null, sendChatDigest);
+
+  // Account switch: reload every account-scoped slot instead of leaving the
+  // PREVIOUS account's report/config/roster sitting in shared state, and
+  // tell the extension to switch its capture LOB so it stays in lockstep
+  // with the Command Center (the two were previously two independent,
+  // unsynchronized pieces of state).
+  useEffect(() => {
+    postToExtension("set-lob", { lob: activeAccount });
+    setReportConfig(loadReportConfig(activeAccount, defaultReportConfigFor(activeAccount)));
+    setVerintRoster(() => {
+      try {
+        const saved = localStorage.getItem(verintRosterKey(activeAccount));
+        return saved ? JSON.parse(saved) : [];
+      } catch {
+        return [];
+      }
+    });
+    setReportPayload(null);
+    setReportSnapshotsToday([]);
+    fetchLatestReport(activeAccount);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeAccount]);
 
   // Manual "Sync now": Verint posts to the extension; simulated shows the scan animation.
   const handleSyncNow = useCallback(() => {
@@ -593,61 +729,118 @@ function App() {
    * runCardAction's approve-send — is what actually delivers alerts to
    * GChat/Teams, on the configured interval instead of instantly per card,
    * and never as one unbounded burst.
+   *
+   * Real Google Chat sends: cards on the "google-chat-lob" channel for an
+   * account with a configured backend webhook (local_api.py /dispatch-alert,
+   * env var GCHAT_WEBHOOK_<ACCOUNT>) go out for real, fire-and-forget,
+   * alongside the simulated dispatch log above. Accounts with no webhook
+   * configured stay simulated-only — this is additive, not a replacement.
    */
   function flushBatch(): void {
-    setCards((prevCards) => {
-      const ready = prevCards.filter((c) => c.status === "ready-to-send");
-      if (ready.length === 0) return prevCards;
+    // Computed from the CURRENT `cards` (closed over from this render) —
+    // NOT inside the setCards updater below. setCards' updater callback is
+    // invoked asynchronously by React (during the next render pass), so
+    // side-effecting code placed inside it — building realSends, calling
+    // appendAudit/setDispatchLog — was running AFTER this function had
+    // already returned and its `for (const send of realSends)` loop had
+    // already finished iterating an EMPTY array. That's the actual reason
+    // real GChat sends never fired: not a channel-resolution bug, a
+    // state-updater-timing bug. setCards below is now a pure, trivial map.
+    const ready = cards.filter((c) => c.status === "ready-to-send");
+    if (ready.length === 0) return;
 
-      const byAccount = new Map<string, CommandCard[]>();
-      for (const c of ready) {
-        const key = c.lob ?? "—";
-        const list = byAccount.get(key);
-        if (list) list.push(c);
-        else byAccount.set(key, [c]);
-      }
+    const byAccount = new Map<string, CommandCard[]>();
+    for (const c of ready) {
+      const key = c.lob ?? "—";
+      const list = byAccount.get(key);
+      if (list) list.push(c);
+      else byAccount.set(key, [c]);
+    }
 
-      const allEntries: DispatchEntry[] = [];
-      const sentIds = new Set<string>();
+    const allEntries: DispatchEntry[] = [];
+    const sentIds = new Set<string>();
+    // Cards headed to Chat, grouped by real account — ONE consolidated
+    // message per account per flush, not one message per card (a burst of
+    // individual pings was unreadable and easy to miss in a busy space).
+    const realSendCardsByAccount = new Map<string, CommandCard[]>();
 
-      for (const group of byAccount.values()) {
-        for (let i = 0; i < group.length; i += MAX_BATCH_SIZE) {
-          const chunk = group.slice(i, i + MAX_BATCH_SIZE);
-          batchSeqRef.current += 1;
-          const cycle = batchSeqRef.current;
-          const flushedAt = new Date().toISOString();
+    for (const group of byAccount.values()) {
+      for (let i = 0; i < group.length; i += MAX_BATCH_SIZE) {
+        const chunk = group.slice(i, i + MAX_BATCH_SIZE);
+        batchSeqRef.current += 1;
+        const cycle = batchSeqRef.current;
+        const flushedAt = new Date().toISOString();
 
-          for (const card of chunk) {
-            allEntries.push({
-              id:             `dispatch-${Date.now()}-${card.id}`,
-              timestamp:      flushedAt,
-              cycle,
-              agent:          card.agent?.name ?? card.title,
-              lob:            card.lob ?? "—",
-              channel:        card.selectedChannel ?? "audit-only",
-              message:        card.draftMessage ?? `Alert sent for ${card.title}.`,
-              escalationLevel: "first-alert",
-              status:         "sent",
-              sentBy:         pendingSentByRef.current.get(card.id) ?? "rta",
-            });
-            pendingSentByRef.current.delete(card.id);
-            sentIds.add(card.id);
+        for (const card of chunk) {
+          // selectedChannel is only ever set by one demo fixture — for
+          // every real/live card it's undefined, so the card's actual
+          // destination is its FIRST target channel, not a hardcoded
+          // "audit-only". This resolved value is what both the dispatch
+          // log AND the real-send gate below must use.
+          const channel = card.selectedChannel ?? card.targetChannels[0] ?? "audit-only";
+
+          allEntries.push({
+            id:             `dispatch-${Date.now()}-${card.id}`,
+            timestamp:      flushedAt,
+            cycle,
+            agent:          card.agent?.name ?? card.title,
+            lob:            card.lob ?? "—",
+            channel,
+            message:        card.draftMessage ?? `Alert sent for ${card.title}.`,
+            escalationLevel: "first-alert",
+            status:         "sent",
+            sentBy:         pendingSentByRef.current.get(card.id) ?? "rta",
+          });
+          pendingSentByRef.current.delete(card.id);
+          sentIds.add(card.id);
+
+          // Live-captured cards are tagged with the real account in `lob`
+          // (see isAccountCard). Demo/scenario cards use `lob` for a
+          // sub-queue name instead (e.g. "TLB", "COSTCO") — they carry no
+          // account of their own, so fall back to whichever account is
+          // currently selected in the Command Center header.
+          if (channel === "google-chat-lob") {
+            const account = isAccountCard(card.lob) ? card.lob : activeAccount;
+            const list = realSendCardsByAccount.get(account);
+            if (list) list.push(card);
+            else realSendCardsByAccount.set(account, [card]);
           }
-
-          appendAudit(
-            "ai",
-            "Batch dispatch",
-            `Batch #${cycle}: ${chunk.length} alert(s) sent.`,
-            "simulated",
-          );
         }
-      }
 
-      setDispatchLog((prev) => [...prev, ...allEntries]);
-      return prevCards.map((c) => (sentIds.has(c.id) ? { ...c, status: "sent" as const } : c));
-    });
+        appendAudit(
+          "ai",
+          "Batch dispatch",
+          `Batch #${cycle}: ${chunk.length} alert(s) sent.`,
+          "simulated",
+        );
+      }
+    }
+
+    setDispatchLog((prev) => [...prev, ...allEntries]);
+    setCards((prevCards) => prevCards.map((c) => (sentIds.has(c.id) ? { ...c, status: "sent" as const } : c)));
     setLastBatchAt(Date.now());
     setSecondsUntilNextBatch(batchIntervalMinutes * 60);
+
+    const realSends = [...realSendCardsByAccount.entries()].map(([account, accountCards]) => ({
+      account,
+      card: buildGChatAlertBatchCard(accountCards),
+    }));
+
+    // Fire-and-forget: an account with no webhook configured just stays
+    // simulated (backend returns ok:false, not a 500) — the dispatch log
+    // above already recorded it as "sent" either way.
+    for (const send of realSends) {
+      fetch("/api/dispatch-alert", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(send),
+      })
+        .then((res) => res.json())
+        .then((data) => {
+          if (!data.ok) console.warn(`[dispatch] ${send.account}: ${data.error}`);
+        })
+        .catch((e) => console.warn(`[dispatch] ${send.account}: request failed`, e));
+    }
   }
 
   // Keep a stable ref to the latest flushBatch/batch-interval so the interval
@@ -742,30 +935,7 @@ function App() {
         onScenarioChange={(id) => setActiveScenarioId(id)}
         onAccountChange={(id) => setActiveAccount(id)}
         hasReport={reportPayload !== null}
-        onGenerateReport={async () => {
-          const today = new Date().toISOString().slice(0, 10);
-          // If the local API is running and we have a Verint roster, use the full pipeline.
-          // Falls back to fetching the most recent pre-generated JSON if the API is unreachable.
-          try {
-            const res = await fetch("/api/generate-report", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                date: today,
-                functional_area: reportConfig.functionalArea,
-                sites: reportConfig.sites,
-                verint_rows: verintRoster,
-              }),
-            });
-            if (res.ok) {
-              // Report written to disk — now load it.
-              await fetchLatestReport();
-              return;
-            }
-          } catch {/* API not running — fall through to disk load */}
-          // Fallback: load the most recent pre-generated file.
-          fetchLatestReport();
-        }}
+        onGenerateReport={generateReport}
       />
 
       {liveBridgeActive && (
@@ -886,6 +1056,7 @@ function App() {
             onAction={(action, cardId) => runCardAction(action, cardId)}
             reportPayload={reportPayload}
             reportConfig={reportConfig}
+            reportSnapshotsToday={reportSnapshotsToday}
             onOpenReportConfig={() => setReportConfigOpen(true)}
           />
         </div>
@@ -944,12 +1115,14 @@ function App() {
 
       {reportConfigOpen && (
         <ReportConfigPanel
+          accountId={activeAccount}
           defaults={reportConfig}
           onClose={() => setReportConfigOpen(false)}
           onConfigSave={(cfg) => {
             setReportConfig(cfg);
             setReportConfigOpen(false);
           }}
+          onSendChatDigestNow={sendChatDigest}
         />
       )}
 

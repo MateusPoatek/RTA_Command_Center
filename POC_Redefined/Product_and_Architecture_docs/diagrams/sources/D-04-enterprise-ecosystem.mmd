@@ -1,0 +1,53 @@
+%% D-04 Enterprise Ecosystem
+%% Source: recast from ../../../docs/diagrams/sources/command-center-integration-topology.mmd
+%% Purpose: where the WFM Automation Platform sits inside the TELUS Digital enterprise fabric
+
+flowchart TB
+
+    subgraph TELUS ["TELUS Digital Enterprise"]
+        direction TB
+
+        CloudCOE["Cloud COE<br/>cloud governance · landing zones · standards"]
+        DataHub["Data Hub<br/>enterprise data platform (BigQuery / warehousing)"]
+        Identity["Identity<br/>SSO · OIDC · MFA · RBAC (enterprise IdP)"]
+
+        subgraph AA ["RPA Engine<br/>(existing orchestration — reuse)"]
+            direction LR
+            AAControlRoom["RPA Orchestrator<br/>job orchestration"]
+        end
+
+        subgraph II ["Intelligent Insights<br/>(existing observability spine — reuse)"]
+            direction LR
+            IIObservability["Observability + audit<br/>business → VP → director → bot reporting"]
+        end
+
+        subgraph PLATFORM ["WFM Automation Platform (this package)"]
+            direction TB
+            RTACore["RTA Command Center<br/>capture → AI advise → HITL gate → dispatch"]
+        end
+
+        CloudCOE -. "hosts" .-> PLATFORM
+        DataHub <-. "intelligence store" .-> PLATFORM
+        Identity -. "auth for" .-> PLATFORM
+        AAControlRoom -. "orchestrates jobs for" .-> PLATFORM
+        PLATFORM -. "logs / audit / STP metrics" .-> IIObservability
+    end
+
+    subgraph ACCOUNTS ["Customer Accounts (tenants)"]
+        direction LR
+        AcctA["Account tenant<br/>e.g. bank-tier client — Verint"]
+        AcctB["Account tenant<br/>NICE IEX (expansion)"]
+        AcctMore["... additional tenants<br/>(one manifest each, P3)"]
+    end
+
+    PLATFORM -->|"serves — one image, many tenant manifests"| ACCOUNTS
+
+    classDef enterprise fill:#f1f5f9,stroke:#64748b,color:#1e293b
+    classDef reuseNode fill:#eef2ff,stroke:#4f46e5,color:#3730a3
+    classDef coreNode fill:#fdf4ff,stroke:#a855f7,color:#581c87
+    classDef acctNode fill:#f0fdf4,stroke:#16a34a,color:#14532d
+
+    class CloudCOE,DataHub,Identity enterprise
+    class AAControlRoom,IIObservability reuseNode
+    class RTACore coreNode
+    class AcctA,AcctB,AcctMore acctNode

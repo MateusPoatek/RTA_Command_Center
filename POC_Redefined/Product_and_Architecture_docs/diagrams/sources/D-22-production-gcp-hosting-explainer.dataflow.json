@@ -1,0 +1,50 @@
+{
+  "schema_version": 1,
+  "diagram_type": "dataflow",
+  "meta": {
+    "title": "How the WFM Automation Platform Will Run in Production",
+    "subtitle": "Plain-language view for non-technical review — no system names, just what happens and where",
+    "output": "D-22-production-gcp-hosting-explainer.html",
+    "quality_profile": "showcase",
+    "viewBox": [1080, 600]
+  },
+  "stages": [
+    { "label": "Where the data comes from" },
+    { "label": "Capture" },
+    { "label": "Compare" },
+    { "label": "Keep a record" },
+    { "label": "Tell a person" }
+  ],
+  "nodes": [
+    { "id": "scheduling", "type": "external", "label": "Scheduling", "sublabel": "who should be working", "stage": 0, "row": 0 },
+    { "id": "attendance", "type": "external", "label": "Attendance", "sublabel": "who is clocked in", "stage": 0, "row": 2 },
+
+    { "id": "captureApp", "type": "frontend", "label": "Capture app", "sublabel": "watches both systems", "stage": 1, "row": 1, "width": 160 },
+
+    { "id": "matchingEngine", "type": "backend", "label": "Matching engine", "sublabel": "scheduled vs. actual", "stage": 2, "row": 1, "width": 160 },
+
+    { "id": "secureStorage", "type": "database", "label": "Secure storage", "sublabel": "kept for audits, never deleted", "stage": 3, "row": 1, "width": 160 },
+
+    { "id": "existingPlatform", "type": "backend", "label": "Existing platform", "sublabel": "already running, already audited", "stage": 3, "row": 2, "width": 160 },
+
+    { "id": "personReview", "type": "security", "label": "Person reviews", "sublabel": "a human checks every alert", "stage": 4, "row": 0, "width": 160 },
+    { "id": "alertSent", "type": "external", "label": "Alert sent", "sublabel": "only once a human approves", "stage": 4, "row": 1, "width": 160 },
+    { "id": "dashboard", "type": "frontend", "label": "Floor View", "sublabel": "what supervisors see live", "stage": 4, "row": 2, "width": 160 }
+  ],
+  "flows": [
+    { "id": "scheduling-capture", "from": "scheduling", "to": "captureApp", "label": "who should be working" },
+    { "id": "attendance-capture", "from": "attendance", "to": "captureApp", "label": "who is actually working" },
+    { "id": "capture-match", "from": "captureApp", "to": "matchingEngine", "label": "both records", "labelDy": -24 },
+    { "id": "match-storage", "from": "matchingEngine", "to": "secureStorage", "label": "keeps a record", "labelDx": 40, "labelDy": 53 },
+    { "id": "match-dashboard", "from": "matchingEngine", "to": "dashboard", "label": "shows the picture live", "route": "bottom-channel" },
+    { "id": "match-review", "from": "matchingEngine", "to": "personReview", "label": "flags a mismatch", "route": "top-channel" },
+    { "id": "review-alert", "from": "personReview", "to": "alertSent", "label": "approved, then sent", "labelDy": 24 },
+    { "id": "storage-existing", "from": "secureStorage", "to": "existingPlatform", "label": "feeds the audit trail", "variant": "dashed", "route": "straight", "labelDy": 40 }
+  ],
+  "cards": [
+    { "dot": "emerald", "title": "Nothing happens without a person", "items": ["Every alert is reviewed and approved by a person before it goes out", "No automatic action is ever taken on someone's schedule or pay without a human decision"] },
+    { "dot": "amber", "title": "What's not settled yet", "items": ["The network path connecting the scheduling and attendance systems to the new cloud environment has not been confirmed — this is the main open item before this can go live", "Exactly which data center location will host this has not been decided yet"] },
+    { "dot": "slate", "title": "Where this runs", "items": ["This describes the path for the vendor-hosted environment — the first committed target", "A bank-tier client's own environment would instead run inside their own cloud, under their own control — a separate, already-planned setup, not this one"] },
+    { "dot": "cyan", "title": "Why this approach", "items": ["Reuses a platform that is already running today and already independently audited, instead of building a new one from scratch", "Keeps cost down by not duplicating something that already works"] }
+  ]
+}

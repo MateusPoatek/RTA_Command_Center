@@ -56,4 +56,4 @@
 *Cross-client benchmarking is design-only (D3); attrition risk and other [../FUTURE_FEATURES.md](../FUTURE_FEATURES.md) items are later phases.*
 
 ## 13. Open questions & dependencies
-*The read-only Verint REST credential (the CIBC unlock); the OCR classifier training set (200–500 labeled screens); the LLM endpoint decision per client.*
+*The read-only Verint REST credential (the bank-tier-client unlock); the OCR classifier training set (200–500 labeled screens); the LLM endpoint decision per client.*

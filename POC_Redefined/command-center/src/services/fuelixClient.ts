@@ -33,14 +33,14 @@
  *   VITE_FUELIX_BASE_URL  — base URL of the FuelIX-compatible API
  *                           (defaults to https://api.fuelix.ai/v1)
  *   VITE_FUELIX_API_KEY   — API key (leave blank to disable AI features)
- *   VITE_FUELIX_MODEL     — model name (defaults to gpt-4o-mini)
+ *   VITE_FUELIX_MODEL     — model name (defaults to claude-haiku-4-5)
  *
  * See also: .env.example for setup instructions.
  */
 
 const BASE_URL = import.meta.env.VITE_FUELIX_BASE_URL ?? "https://api.fuelix.ai/v1";
 const API_KEY  = import.meta.env.VITE_FUELIX_API_KEY  ?? "";
-const MODEL    = import.meta.env.VITE_FUELIX_MODEL    ?? "gpt-4o-mini";
+const MODEL    = import.meta.env.VITE_FUELIX_MODEL    ?? "claude-haiku-4-5";
 
 // ---------------------------------------------------------------------------
 // System prompt — who the AI is and how it should behave

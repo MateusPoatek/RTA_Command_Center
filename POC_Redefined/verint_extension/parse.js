@@ -49,6 +49,19 @@
     return names;
   }
 
+  // Fallback name source: the SAME calendar-filter payload that drives the
+  // violations we're alerting on also carries each employee's name at
+  // resourceData[].workResourceDetails.name{first,last} (see
+  // VERINT_EXTRACTION_CAPABILITIES.md) — no separate work-resources capture
+  // required. Cards were falling back to a bare numeric employee id whenever
+  // that separate capture hadn't happened to include this specific employee.
+  function nameFromResourceRecord(r) {
+    const n = r && r.workResourceDetails && r.workResourceDetails.name;
+    if (!n) return null;
+    const combined = `${n.last || ""}, ${n.first || ""}`.replace(/^,\s*|,\s*$/g, "").trim();
+    return combined || null;
+  }
+
   function buildCard(v, name, lob, snapshotTime) {
     const actual = ((v.actualEventData || [{}])[0] || {}).label || "Unknown";
     const planned = v.plannedActivityName || "Unknown";
@@ -275,7 +288,7 @@
     const perAgent = {};
     for (const r of resourceData) {
       const eid = Number(r.id);
-      const name = names[eid] || String(eid);
+      const name = names[eid] || nameFromResourceRecord(r) || `Agent #${eid}`;
       // Per-agent Verint-derived metrics (computed once per employee).
       const adh = deriveAdherence(r);
       const sp = deriveShiftProductive(r);
@@ -343,8 +356,12 @@
     const rows = [];
     for (const r of resourceData) {
       const eid = Number(r.id);
-      const name = names[eid];
-      if (!name) continue; // no name resolution -> skip (can't join without it)
+      // Same fallback as buildCards() — the calendar-filter payload already
+      // carries the name via workResourceDetails, no separate work-resources
+      // capture required. Only truly skip (can't join against GTT without a
+      // real name) if NEITHER source resolves one.
+      const name = names[eid] || nameFromResourceRecord(r);
+      if (!name) continue;
 
       const adh = deriveAdherence(r);
       const adhPct = adh ? `${adh.inPct}%` : "";

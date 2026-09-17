@@ -34,6 +34,7 @@ except ImportError:
 DiscrepancyType = Literal[
     "clocked_in_not_in_adherence",
     "in_adherence_no_clock_in",
+    "no_clock_in_no_activity",
     "clocked_out_still_active",
     "not_yet_scheduled",
     "match_ok",
@@ -87,6 +88,10 @@ class ReconciliationReport:
     discrepancies: list[DiscrepancyRow] = field(default_factory=list)
     intelligence: list[str] = field(default_factory=list)
     schema_version: str = "1.0"
+    # "gtt_verint" (default) or "verint_only" — set by the caller when GTT
+    # isn't available for this account (e.g. a branch on a different
+    # time-tracking system). gtt_total/matched are always 0 in that mode.
+    source: str = "gtt_verint"
     # Whether the fuzzy-match fallback was actually available when this report
     # was generated. False means every non-exact-surname join silently failed
     # (no exception — it just never matched) — a report generated with this
@@ -108,12 +113,28 @@ class ReconciliationReport:
     # both the peak-hour chart and the attendance-evolution chart — one
     # aggregation, two views.
     hourly_attendance: list[dict] = field(default_factory=list)
+    # The real-gap subset of `intelligence` — mismatch/ghost/absenteeism/OOA-
+    # severity bullets, not routine info ones. Populated by report_intelligence
+    # .generate_points_of_attention(); empty until the caller sets it (mirrors
+    # how `intelligence` itself is populated after construction).
+    points_of_attention: list[str] = field(default_factory=list)
+
+    @property
+    def total_productive_minutes(self) -> int:
+        # Mirrors ReportChartsPanel.tsx's ProductiveHoursMeter reduce — same
+        # sum, computed once here so the shift report doesn't need to
+        # reimplement it or trust the frontend to have done the same math.
+        return sum(d.productive_minutes or 0 for d in self.discrepancies)
 
     @property
     def discrepancy_count(self) -> int:
+        # in_adherence_no_clock_in means the agent IS working per Verint (has
+        # productive/adherence minutes) despite no GTT clock-in — that's
+        # attendance, not a discrepancy. no_clock_in_no_activity (no GTT AND
+        # no Verint activity either) is the real gap and still counts.
         return sum(
             1 for d in self.discrepancies
-            if d.discrepancy_type not in ("match_ok", "not_yet_scheduled")
+            if d.discrepancy_type not in ("match_ok", "not_yet_scheduled", "in_adherence_no_clock_in")
         )
 
     def to_dict(self) -> dict:
@@ -121,11 +142,13 @@ class ReconciliationReport:
             "_meta": {
                 "schema_version": self.schema_version,
                 "generated_by": "gtt_verint_reconciler.py",
-                "sources": ["gtt", "verint"],
+                "sources": ["gtt", "verint"] if self.source == "gtt_verint" else ["verint"],
                 "join_strategy": "surname_exact_then_fuzzy",
                 "ai_context": (
                     "discrepancy_type enum: "
-                    "clocked_in_not_in_adherence | in_adherence_no_clock_in | "
+                    "clocked_in_not_in_adherence | in_adherence_no_clock_in (present, "
+                    "counts as attending — excluded from discrepancy_count) | "
+                    "no_clock_in_no_activity (real absence) | "
                     "clocked_out_still_active | not_yet_scheduled | match_ok"
                 ),
                 "fuzzy_match_available": self.fuzzy_match_available,
@@ -136,11 +159,14 @@ class ReconciliationReport:
             "generated_at": self.generated_at,
             "functional_area": self.functional_area,
             "date": self.date,
+            "source": self.source,
             "gtt_total": self.gtt_total,
             "verint_total": self.verint_total,
             "matched": self.matched,
             "discrepancy_count": self.discrepancy_count,
+            "total_productive_minutes": self.total_productive_minutes,
             "intelligence": self.intelligence,
+            "points_of_attention": self.points_of_attention,
             "discrepancies": [d.to_dict() for d in self.discrepancies],
             "gtt_event_type_counts": self.gtt_event_type_counts,
             "hourly_attendance": self.hourly_attendance,
@@ -260,6 +286,7 @@ def reconcile(
     verint_rows: list,
     functional_area: str,
     date: str,
+    source: str = "gtt_verint",
 ) -> ReconciliationReport:
     """Join GTT attendance with Verint adherence rows and produce a report."""
 
@@ -371,10 +398,18 @@ def reconcile(
             # Use the SCHEDULED start specifically — the actual-worked start
             # is empty for anyone who hasn't started, so it can never signal
             # "not yet started" (see note above).
-            dtype: DiscrepancyType = (
-                "not_yet_scheduled" if scheduled_start_dt is not None and scheduled_start_dt > now
-                else "in_adherence_no_clock_in"
+            has_activity = bool(
+                (getattr(vrow, "productive_paid_minutes", None) or 0) > 0
+                or (getattr(vrow, "adherence_minutes", None) or 0) > 0
             )
+            if scheduled_start_dt is not None and scheduled_start_dt > now:
+                dtype: DiscrepancyType = "not_yet_scheduled"
+            elif has_activity:
+                # Real productive/adherence minutes in Verint despite no GTT
+                # clock-in — they ARE attending, just missed clocking in.
+                dtype = "in_adherence_no_clock_in"
+            else:
+                dtype = "no_clock_in_no_activity"
             discrepancies.append(DiscrepancyRow(
                 workday_id="",
                 employee=_verint_display(getattr(vrow, "agent_name", "")),
@@ -405,4 +440,5 @@ def reconcile(
         hourly_attendance=_compute_hourly_attendance(verint_rows),
         earliest_shift_start=earliest_start.isoformat() if earliest_start else None,
         latest_shift_end=latest_end.isoformat() if latest_end else None,
+        source=source,
     )

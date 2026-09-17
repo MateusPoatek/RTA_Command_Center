@@ -1,0 +1,26 @@
+%% D-03 Personas
+%% Source: package README diagram library; D-09-c4-context.mmd
+%% Purpose: who uses the platform and what each needs
+
+flowchart TB
+
+    subgraph FLOOR["Floor ops — real-time monitoring & response"]
+        direction LR
+        RTA["<b>RTA Analyst</b><br/>Needs: real-time adherence view; reviewable<br/>CommandCards to approve/edit/suppress (HITL)<br/>Principles: P1, P5"]
+        SUP["<b>Supervisor</b><br/>Needs: escalations and dispatched alerts<br/>scoped to their LOB<br/>Principles: P5"]
+        OM["<b>Operations Manager</b><br/>Needs: outage/escalation cards; visibility<br/>into floor-level response<br/>Principles: P5"]
+    end
+
+    subgraph PLATFORM["Platform ops — configuration & delivery"]
+        direction LR
+        PADMIN["<b>Platform Admin</b><br/>Needs: tenant manifest, thresholds,<br/>LOB routing, connector registry config<br/>Principles: P3, P4"]
+        TADMIN["<b>Tenant Admin</b><br/>Needs: client-scoped config — users, policies,<br/>integrations, reports, flags for their tenant only<br/>Principles: P3"]
+        ENG["<b>Automation Engineer</b><br/>Needs: adapter-blind rules core, swappable<br/>integration seams, one image / many manifests<br/>Principles: P2, P3, P4"]
+    end
+
+    subgraph LEADERSHIP["Leadership — value & risk"]
+        direction LR
+        VP["<b>VP</b><br/>Needs: value, cost, and commitment visibility;<br/>risk posture; rollout progress<br/>Principles: P1, P5"]
+    end
+
+    FLOOR --> PLATFORM --> LEADERSHIP

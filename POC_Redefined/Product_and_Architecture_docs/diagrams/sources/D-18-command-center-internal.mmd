@@ -1,0 +1,37 @@
+%% D-18 Command Center Internal Architecture
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md §"SPA (Command Center)"/§4 HITL step;
+%%         POC_Redefined/command-center/src/components/{PriorityFeed,AlertDetailModal,CopilotPanel,DispatchFeed,LearningStrip}.tsx
+%% Purpose: zoom into the Command Center SPA container from D-10 — the HITL review surface
+%%          components, the Push Service feed in, and the API Gateway approve-only path out (P5)
+
+flowchart TB
+    Push["Push Service<br/>(WSS / SSE)"]
+    Gateway["API Gateway<br/>(OIDC · MFA · RBAC)"]
+
+    subgraph SPA["Command Center SPA — HITL review surface"]
+        direction TB
+        Feed["Live Card Feed<br/>(PriorityFeed)<br/>ranked CommandCard[] by severity/confidence"]
+        Detail["Card Detail / Triage View<br/>(AlertDetailModal)<br/>rule provenance, agent context"]
+        Copilot["Copilot Panel<br/>(CopilotPanel)<br/>Why → Recommend → Draft<br/>LLM-drafted message, always editable"]
+        Learning["Learning Strip<br/>(LearningStrip)<br/>outcome/feedback signal, no auto-apply"]
+        DispatchFeedC["Dispatch Feed<br/>(DispatchFeed)<br/>sent / suppressed / escalated log, this shift"]
+    end
+
+    Push -- "streams CardEvents" --> Feed
+    Feed -- "select card" --> Detail
+    Detail -- "open draft" --> Copilot
+    Copilot -- "edited/approved draft" --> Feed
+
+    Feed -- "approve-send / edit-message / suppress / escalate<br/>(P5 — only path to dispatch)" --> Gateway
+    Gateway -. "CardEvent: dispatched/suppressed/escalated" .-> Push
+    Push -- "updates" --> DispatchFeedC
+    DispatchFeedC -- "outcome feedback" --> Learning
+    Learning -. "informs next draft (advisory only, P1)" .-> Copilot
+
+    classDef gate fill:#fff3cd,stroke:#c9971e,stroke-width:2px
+    class Feed gate
+
+    %% Note: every action out of the SPA — approve-send, edit-message, suppress, escalate —
+    %% is the ONLY path to the API Gateway (P5); the SPA itself never writes to Verint/SNOW/chat.
+    %% Note: Copilot drafts are advisory text only, editable before send; the LLM subsystem
+    %% holds no write credential (P1) — the human action through the gateway is what dispatches.

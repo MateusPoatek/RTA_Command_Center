@@ -98,8 +98,8 @@ A non-negotiable rule surfaces immediately: **`lob` is injected from the active 
 |---|---|---|---|---|
 | **Browser Extension** (RTA Live Bridge) | MV3 extension hooks Verint's own `fetch`/XHR in the RTA's browser, parses `calendar-filter`, bridges cards to the Command Center via `postMessage`. | Web-accessible Verint ("just a browser" — EPIC). **Does not work in Citrix.** | ✅ Live-proven on EPIC (12 real cards, 2026-06-05). | PII stays in the local browser (same-machine); a networked relay needs an explicit PII decision (§7). |
 | **netcap** (Playwright/CDP) | Drives/observes a browser headlessly, records the API JSON deterministically. | Web Verint; dev/test/CI; repeatable capture. | ✅ Proven on real EPIC data. | Local capture; treat recordings as transient PII. |
-| **Vision/OCR** (Track A) | Screenshot of the Verint window → OCR/vision engine → structured rows. | **Citrix/VDI pixel stream — the only local option there.** Must run *inside* the VDI. | ⚠️ Baseline: status **100%**, name **75%**, duration **75%**, **LOB 0%**. Needs a classifier fine-tuned on 200–500 labeled CIBC screens. | Capture in-VDI; **only PII-minimized normalized rows leave** — never raw pixels. |
-| **Verint REST API** (Track B) | Backend calls Verint's adherence API server-to-server (OAuth client-credentials), no UI. | Both — **the CIBC unlock**: bypasses Citrix entirely. | 🔓 Designed; needs a read-only credential. | No pixels, no OCR; LOB comes natively from the API. |
+| **Vision/OCR** (Track A) | Screenshot of the Verint window → OCR/vision engine → structured rows. | **Citrix/VDI pixel stream — the only local option there.** Must run *inside* the VDI. | ⚠️ Baseline: status **100%**, name **75%**, duration **75%**, **LOB 0%**. Needs a classifier fine-tuned on 200–500 labeled bank-tier-client screens. | Capture in-VDI; **only PII-minimized normalized rows leave** — never raw pixels. |
+| **Verint REST API** (Track B) | Backend calls Verint's adherence API server-to-server (OAuth client-credentials), no UI. | Both — **the bank-tier-client unlock**: bypasses Citrix entirely. | 🔓 Designed; needs a read-only credential. | No pixels, no OCR; LOB comes natively from the API. |
 | **File Export** (GScript) | Scheduled Verint export → file → backend ingest. | Both; legacy/batch. | 🔓 Designed; not built. | File-based; highest latency and operational friction. |
 
 > **Vision/OCR is *not* general "computer-use" AI.** The Track A adapter is a constrained, **read-only extraction** step (screenshot → structured rows, run inside the VDI). Autonomous computer-use agents (driving the UI) are **exploration-only, not production-ready, and outside the production governance envelope** — never a write path. See [SYSTEM_ARCHITECTURE.md §7](./SYSTEM_ARCHITECTURE.md).
@@ -118,7 +118,7 @@ A non-negotiable rule surfaces immediately: **`lob` is injected from the active 
 | **Microsoft Teams** | Same pattern via Bot Framework / Incoming Webhook. | 🔓 | Alternate/supervisor channel. `TargetChannel: "teams-workforce"`. |
 | **ServiceNow** (REST) | Backend POSTs `/api/now/table/incident`; stores `INC-XXXXX` in audit. | 🔓 | **REST, not MCP** — see [../SERVICENOW_MCP_EVALUATION.md](../SERVICENOW_MCP_EVALUATION.md). `TargetChannel: "servicenow"`. |
 | **Audit-only** | Logs to the audit trail; sends nothing externally. | ✅ | For suppressed/review-only cards. `TargetChannel: "audit-only"`. |
-| **RPA Engine** (UiPath / Automation Anywhere) | Deterministic UI bot, runs inside the Verint/Citrix boundary; executes approved writes. | 🔓 | **The only approved write channel into Verint/CIBC.** Deterministic steps only — never judgment. |
+| **RPA Engine** (UiPath) | Deterministic UI bot, runs inside the Verint/Citrix boundary; executes approved writes. | 🔓 | **The only approved write channel into Verint.** Deterministic steps only — never judgment. |
 
 The `TargetChannel` enum is defined in [../../command-center/src/domain/types.ts](../../command-center/src/domain/types.ts) and mirrored in dispatch entries ([scenario_types.ts](../../command-center/src/domain/scenario_types.ts)).
 
@@ -126,12 +126,12 @@ The `TargetChannel` enum is defined in [../../command-center/src/domain/types.ts
 
 The single most important capture decision for any client is **how Verint is reached**. That decision selects one of two topologies; everything downstream (normalize → core → cards → Command Center → dispatch) is identical.
 
-### Topology A — Read-only Verint REST API (the preferred CIBC path)
+### Topology A — Read-only Verint REST API (the preferred bank-tier-client path)
 
 ```mermaid
 flowchart TB
 
-    subgraph CIBC ["CIBC Boundary — Citrix/VDI (IRRELEVANT to capture on this path)"]
+    subgraph BANKTIER ["Bank-tier Boundary — Citrix/VDI (IRRELEVANT to capture on this path)"]
         direction LR
         RTA["RTA at desk\n(Citrix pixel stream)"]
         VerintUI["Verint UI in Citrix"]
@@ -179,7 +179,7 @@ flowchart TB
 
 *Diagram source: [03-integration-rest-readonly.mmd](./diagrams/mmd/03-integration-rest-readonly.mmd)*
 
-A backend capture worker, deployed in the client's cloud, calls Verint's read-only REST API server-to-server. **The Citrix/VDI boundary becomes irrelevant to capture** — there are no screenshots, no OCR, no pixel egress, and LOB arrives natively. This "collapses the hard case into the easy case" and is **the single highest-leverage access grant to pursue with CIBC** ([../CONNECTOR_SCENARIOS.md](../CONNECTOR_SCENARIOS.md)).
+A backend capture worker, deployed in the client's cloud, calls Verint's read-only REST API server-to-server. **The Citrix/VDI boundary becomes irrelevant to capture** — there are no screenshots, no OCR, no pixel egress, and LOB arrives natively. This "collapses the hard case into the easy case" and is **the single highest-leverage access grant to pursue with a bank-tier client** ([../CONNECTOR_SCENARIOS.md](../CONNECTOR_SCENARIOS.md)).
 
 Design points:
 - **Poll every 60s.** There is no push channel (no WebSocket; refresh is interaction-driven per [../OBSERVABILITY_DRY_RUN.md](../OBSERVABILITY_DRY_RUN.md)), so the backend generates its own cadence. 60s sits comfortably inside the 15-minute RTA cycle; floor at 30s (smallest business threshold is the 3-minute hold — sub-minute is noise).
@@ -191,7 +191,7 @@ Design points:
 ```mermaid
 flowchart TB
 
-    subgraph VDI ["CIBC Boundary — Citrix / VDI  (no data copy-out; pixel stream only)"]
+    subgraph VDI ["Bank-tier Boundary — Citrix / VDI  (no data copy-out; pixel stream only)"]
         direction TB
         VerintPix["Verint UI\n(SVG Gantt — vision target)"]
         VisionAgent["Vision/OCR Agent (Track A)\ncaptures screen IN-VDI\nstatus 100% · name 75% · LOB 0%"]
@@ -246,7 +246,7 @@ flowchart TB
 
 When Verint is reachable only as a Citrix pixel stream and no REST credential exists, capture must happen **inside the VDI** (the browser extension cannot work — there is no local DOM/fetch). A vision/OCR agent captures the screen in-VDI, injects LOB from tab context, PII-minimizes to normalized rows, and only those rows leave via an approved egress (a VDI-compatible agent or email to a TELUS address — raw pixels never leave). Writes go only through an **RPA engine that runs inside the boundary**.
 
-Constraints that make this the hard path: OCR LOB at 0% (LOB from config, mandatory), fragile table reconstruction, a classifier that needs 200–500 labeled CIBC screens, and the strict no-copy-out VDI rule ([../HARNESS_FOR_COMPUTER_USE_HOWTO.md](../HARNESS_FOR_COMPUTER_USE_HOWTO.md)).
+Constraints that make this the hard path: OCR LOB at 0% (LOB from config, mandatory), fragile table reconstruction, a classifier that needs 200–500 labeled bank-tier-client screens, and the strict no-copy-out VDI rule ([../HARNESS_FOR_COMPUTER_USE_HOWTO.md](../HARNESS_FOR_COMPUTER_USE_HOWTO.md)).
 
 ## 6. The fail-prevention model (the heart of the catalog)
 
@@ -255,7 +255,7 @@ Capture depends on an upstream we don't own, so the system is built to **degrade
 ```mermaid
 flowchart TB
 
-    subgraph CIBC ["No-access tier (CIBC / Citrix)"]
+    subgraph BANKTIER ["No-access tier (bank-tier client / Citrix)"]
         direction TB
         C1["1. Verint REST (Track B)\nPRIMARY — if credential granted"]
         C2["2. Vision/OCR in-VDI (Track A)\nFALLBACK"]
@@ -294,13 +294,13 @@ flowchart TB
     Trust -. "logged" .-> Audit
     Multi -. "logged" .-> Audit
 
-    classDef cibc fill:#fef2f2,stroke:#dc2626,color:#7f1d1d
+    classDef bankTierClass fill:#fef2f2,stroke:#dc2626,color:#7f1d1d
     classDef epic fill:#eef2ff,stroke:#6366f1,color:#3730a3
     classDef core fill:#fefce8,stroke:#64748b,color:#1e293b
     classDef warn fill:#fff7ed,stroke:#ea580c,color:#7c2d12
     classDef store fill:#f0fdf4,stroke:#16a34a,color:#14532d
 
-    class C1,C2,C3 cibc
+    class C1,C2,C3 bankTierClass
     class E1,E2,E3 epic
     class Norm,Conf,Multi,Trust core
     class Except warn
@@ -310,7 +310,7 @@ flowchart TB
 *Diagram source: [05-connector-failprevention.mmd](./diagrams/mmd/05-connector-failprevention.mmd)*
 
 1. **Primary → fallback layering, per environment.** The chosen primary degrades to a fallback when unavailable — and the *order is configuration* (the capture list in the tenant manifest, [FDAE_CONFIGURATION_LAYER.md](./FDAE_CONFIGURATION_LAYER.md)):
-   - **`none`-access (CIBC / Citrix):** Verint REST (once credentialed) → Vision/OCR in-VDI → file export.
+   - **`none`-access (bank-tier client / Citrix):** Verint REST (once credentialed) → Vision/OCR in-VDI → file export.
    - **`full`/`partial`-access (EPIC / web):** browser extension → netcap → Verint REST.
 2. **Multi-source confirmation matrix.** A flagged agent is "confirmed" when independent sources agree: Verint's own out-of-adherence verdict + Verint's native NOTIFICATIONS + the card-shape match + the LOB-chat routing. Agreement *and* disagreement are both logged; disagreement lowers confidence and can divert to HITL.
 

@@ -27,7 +27,7 @@
 // matches one of these known account ids are partitioned by account.
 // ---------------------------------------------------------------------------
 
-export const ACCOUNTS = ["EPIC", "ZILLOW", "CORELOGIC"] as const;
+export const ACCOUNTS = ["EPIC", "EPIC_PH", "EPIC_BG", "ZILLOW", "CORELOGIC", "MY_HERITAGE"] as const;
 export type AccountId = (typeof ACCOUNTS)[number];
 
 /** True if `lob` is one of the known live-capture account ids (not a demo sub-queue name). */
@@ -699,6 +699,7 @@ export interface AutoAction {
 export type DiscrepancyType =
   | "clocked_in_not_in_adherence"
   | "in_adherence_no_clock_in"
+  | "no_clock_in_no_activity"
   | "clocked_out_still_active"
   | "not_yet_scheduled"
   | "match_ok";
@@ -752,11 +753,17 @@ export interface ReconciliationReport {
   generated_at: string;
   functional_area: string;
   date: string;
+  /** "gtt_verint" (default) or "verint_only" — set when GTT isn't available for this account. gtt_total/matched are always 0 in that mode. */
+  source: "gtt_verint" | "verint_only";
   gtt_total: number;
   verint_total: number;
   matched: number;
   discrepancy_count: number;
+  /** Sum of productive_minutes across all discrepancy rows — mirrors ProductiveHoursMeter's own reduce, computed once backend-side. */
+  total_productive_minutes: number;
   intelligence: string[];
+  /** The real-gap subset of `intelligence` (mismatch/ghost/absenteeism/OOA-severity) — for a report section that should only show what's worth acting on. */
+  points_of_attention: string[];
   discrepancies: DiscrepancyRow[];
   /** Total occurrences of each GTT AUX event type across the whole raw pull (not deduped per employee). */
   gtt_event_type_counts: Record<string, number>;
@@ -764,12 +771,59 @@ export interface ReconciliationReport {
   hourly_attendance: HourlyAttendanceBucket[];
 }
 
+// ---------------------------------------------------------------------------
+// Adherence shift summary — rolled up client-side from the live CommandCard
+// queue (lane "real-time-adherence"), since that data has no backend/
+// persisted representation the way the GTT×Verint report does. See
+// utils/adherenceSummary.ts.
+// ---------------------------------------------------------------------------
+
+export interface AdherenceOutcomeTotals {
+  resolved: number;
+  escalated: number;
+  sent: number;
+  suppressed: number;
+  active: number;
+}
+
+export interface AdherenceLobBreakdown {
+  lob: string;
+  violationCount: number;
+  avgAdherenceOutPercent: number | null;
+}
+
+export interface AdherenceTopOffender {
+  agentName: string;
+  lob: string;
+  violationCount: number;
+  worstAdherenceOutPercent: number | null;
+}
+
+export interface AdherenceSummary {
+  totalViolations: number;
+  byOutcome: AdherenceOutcomeTotals;
+  perLob: AdherenceLobBreakdown[];
+  topOffenders: AdherenceTopOffender[];
+}
+
+// Global report-generation schedule (one schedule for now, not per-account).
+// "preset" spaces `timesPerDay` generations evenly across the shift window;
+// "custom" fires at exact HH:mm times (in the report's configured tz).
+export type ReportSchedule =
+  | { mode: "off" }
+  | { mode: "preset"; timesPerDay: 3 | 5 }
+  | { mode: "custom"; times: string[] };
+
 export interface ReportConfig {
+  /** "gtt_verint" (default) or "verint_only" for accounts where GTT isn't available yet. */
+  source: "gtt_verint" | "verint_only";
   functionalArea: string;
   sites: string;
   visibleColumns: (keyof DiscrepancyRow)[];
   recipients: string;
-  schedule: "off" | "daily" | "weekly";
+  schedule: ReportSchedule;
+  /** Independent of `schedule` above (which drives report GENERATION) — this drives pushing an Attendance+Adherence digest to Google Chat every 30 min. */
+  chatDigestEnabled: boolean;
 }
 
 export interface ReportHistoryEntry {
@@ -783,6 +837,7 @@ export interface ReportHistoryEntry {
 }
 
 export const DEFAULT_REPORT_CONFIG: ReportConfig = {
+  source: "gtt_verint",
   functionalArea: "FA_Epic Games",
   sites: "SV - Antiguo Cuscatlan - Torre Emblema",
   visibleColumns: [
@@ -796,7 +851,8 @@ export const DEFAULT_REPORT_CONFIG: ReportConfig = {
     "discrepancy_type",
   ],
   recipients: "",
-  schedule: "off",
+  schedule: { mode: "off" },
+  chatDigestEnabled: false,
 };
 
 // ---------------------------------------------------------------------------

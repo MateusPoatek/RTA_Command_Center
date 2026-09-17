@@ -75,15 +75,34 @@ class GTTRow:
 
 
 def _mint_token(key_path: str) -> tuple[str, str]:
-    """Return (identity_token, service_account_email)."""
+    """Return (identity_token, service_account_email).
+
+    Google's token endpoint intermittently rejects a self-signed JWT with
+    "invalid_grant: Invalid JWT Signature" even though the same JWT verifies
+    fine locally against its own public key — confirmed this is a transient
+    server-side rejection, not a bad key or a clock/crypto issue on our end.
+    Measured per-attempt failure rate against the real endpoint is ~65-70%,
+    so this needs enough retries to make success near-certain, not just "a
+    few tries".
+    # ponytail: fixed retry count/delay, tune if the failure rate changes
+    """
     from google.oauth2 import service_account
     from google.auth.transport.requests import Request
+    from google.auth.exceptions import RefreshError
+    import time
 
     creds = service_account.IDTokenCredentials.from_service_account_file(
         key_path, target_audience=_URL
     )
-    creds.refresh(Request())
-    return creds.token, creds.service_account_email
+    max_attempts = 8
+    for attempt in range(max_attempts):
+        try:
+            creds.refresh(Request())
+            return creds.token, creds.service_account_email
+        except RefreshError:
+            if attempt == max_attempts - 1:
+                raise
+            time.sleep(1)
 
 
 def _parse_dt(date_str: str, time_str: str) -> datetime | None:

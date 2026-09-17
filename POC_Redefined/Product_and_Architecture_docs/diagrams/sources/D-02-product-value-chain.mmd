@@ -1,0 +1,12 @@
+%% D-02 Product Value Chain
+%% Source: package README diagram library
+%% Purpose: what value the platform generates
+
+flowchart LR
+    A[Attendance<br/>capture] --> B[Reconciliation<br/>GTT x Verint]
+    B --> C[Alerts<br/>classify & triage]
+    C --> D[Decision Support<br/>CommandCard drafted]
+    D --> E[Dispatch<br/>human-approved send]
+    E --> F[Reporting<br/>audit & intelligence summary]
+    F --> G[Learning<br/>pattern feedback to thresholds]
+    G -.refines.-> C

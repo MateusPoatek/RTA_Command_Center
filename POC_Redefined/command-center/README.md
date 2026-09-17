@@ -144,7 +144,7 @@ Every card, agent, and number in the demo is tagged with one of four labels:
 |----------|----------|-------------|
 | `VITE_FUELIX_BASE_URL` | No | FuelIX API base URL. Defaults to `https://api.fuelix.ai/v1`. |
 | `VITE_FUELIX_API_KEY` | No | FuelIX API key. If blank, Copilot panel shows a "not configured" message. |
-| `VITE_FUELIX_MODEL` | No | Model name. Defaults to `gpt-4o-mini`. |
+| `VITE_FUELIX_MODEL` | No | Model name. Defaults to `claude-haiku-4-5`. |
 
 ⚠️ **Security**: These variables are embedded in the browser bundle at build time.
 They are visible in DevTools. Do not use production keys in a public-facing deployment.

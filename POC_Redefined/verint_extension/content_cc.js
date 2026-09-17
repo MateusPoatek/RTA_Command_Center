@@ -35,5 +35,18 @@ window.addEventListener("message", (e) => {
     chrome.runtime.sendMessage({ type: "trigger-capture" }, () => void chrome.runtime.lastError);
   } else if (d.kind === "set-frequency") {
     chrome.runtime.sendMessage({ type: "set-frequency", seconds: d.seconds }, () => void chrome.runtime.lastError);
+  } else if (d.kind === "run-full-capture") {
+    // Scheduled report generation asking for a fresh Verint read before it
+    // runs (same one-pass census+targeted capture as the popup's button).
+    chrome.runtime.sendMessage({ type: "run-full-capture" }, () => void chrome.runtime.lastError);
+  } else if (d.kind === "push-now") {
+    // Force-deliver whatever's staged, regardless of the autoPush setting —
+    // the scheduler needs a guaranteed "cards" push after a full capture.
+    chrome.runtime.sendMessage({ type: "push-now" }, () => void chrome.runtime.lastError);
+  } else if (d.kind === "set-lob") {
+    // Keep the extension's capture LOB in lockstep with the Command Center's
+    // activeAccount — otherwise the two can silently diverge (RTA switches
+    // accounts in the app, extension keeps capturing under the old LOB).
+    chrome.runtime.sendMessage({ type: "set-lob", lob: d.lob }, () => void chrome.runtime.lastError);
   }
 });

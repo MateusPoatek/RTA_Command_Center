@@ -8,26 +8,21 @@
  */
 
 import { useState } from "react";
-import type { ReconciliationReport, DiscrepancyRow, DiscrepancyType } from "../domain/types";
-import { exportReportXlsx, exportReportPdf } from "../utils/export";
+import type { CommandCard, ReconciliationReport, DiscrepancyRow, DiscrepancyType, ReportHistoryEntry } from "../domain/types";
+import { exportReportXlsx, exportReportPdf, exportShiftReportPdf } from "../utils/export";
+import { typeLabelFor } from "../utils/reportLabels";
 import { ReportPreview } from "./ReportPreview";
 import { ReportChartsPanel } from "./ReportChartsPanel";
+import { ShiftReportPrintView } from "./ShiftReportPrintView";
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
-const TYPE_LABELS: Record<DiscrepancyType, string> = {
-  clocked_in_not_in_adherence: "No Verint record",
-  in_adherence_no_clock_in:    "No GTT clock-in",
-  clocked_out_still_active:    "Ghost session",
-  not_yet_scheduled:           "Shift not started",
-  match_ok:                    "OK",
-};
-
 const TYPE_COLOURS: Record<DiscrepancyType, string> = {
   clocked_in_not_in_adherence: "#ef4444",   // red
-  in_adherence_no_clock_in:    "#f59e0b",   // amber
+  in_adherence_no_clock_in:    "#22c55e",   // green — present, not a real discrepancy
+  no_clock_in_no_activity:     "#f59e0b",   // amber — the genuine gap
   clocked_out_still_active:    "#8b5cf6",   // violet
   not_yet_scheduled:           "#64748b",   // slate — informational, not a real discrepancy
   match_ok:                    "#22c55e",   // green
@@ -59,6 +54,19 @@ type SortKey = keyof DiscrepancyRow;
 // ---------------------------------------------------------------------------
 
 function SummaryBanner({ report }: { report: ReconciliationReport }) {
+  if (report.source === "verint_only") {
+    return (
+      <div className="grd-banner">
+        <Stat label="Verint Captured" value={report.verint_total} colour="#a78bfa" />
+        <Stat
+          label="Attendance Gaps"
+          value={report.discrepancy_count}
+          colour={report.discrepancy_count > 0 ? "#f87171" : "#34d399"}
+        />
+      </div>
+    );
+  }
+
   const pct = report.gtt_total > 0
     ? Math.round((report.matched / report.gtt_total) * 100)
     : 0;
@@ -86,13 +94,13 @@ function Stat({ label, value, colour }: { label: string; value: number | string;
   );
 }
 
-function TypeBadge({ type }: { type: DiscrepancyType }) {
+function TypeBadge({ type, source }: { type: DiscrepancyType; source: ReconciliationReport["source"] }) {
   return (
     <span
       className="grd-badge"
       style={{ background: TYPE_COLOURS[type] + "22", color: TYPE_COLOURS[type], borderColor: TYPE_COLOURS[type] + "55" }}
     >
-      {TYPE_LABELS[type]}
+      {typeLabelFor(type, source)}
     </span>
   );
 }
@@ -100,9 +108,11 @@ function TypeBadge({ type }: { type: DiscrepancyType }) {
 function DiscrepancyTable({
   rows,
   visibleCols,
+  source,
 }: {
   rows: DiscrepancyRow[];
   visibleCols: (keyof DiscrepancyRow)[];
+  source: ReconciliationReport["source"];
 }) {
   const [sortKey, setSortKey] = useState<SortKey>("discrepancy_type");
   const [sortAsc, setSortAsc] = useState(true);
@@ -126,6 +136,7 @@ function DiscrepancyTable({
     "all",
     "clocked_in_not_in_adherence",
     "in_adherence_no_clock_in",
+    "no_clock_in_no_activity",
     "clocked_out_still_active",
     "not_yet_scheduled",
     "match_ok",
@@ -139,6 +150,7 @@ function DiscrepancyTable({
     all: rows.length,
     clocked_in_not_in_adherence: 0,
     in_adherence_no_clock_in: 0,
+    no_clock_in_no_activity: 0,
     clocked_out_still_active: 0,
     not_yet_scheduled: 0,
     match_ok: 0,
@@ -169,7 +181,7 @@ function DiscrepancyTable({
             className={`grd-filter-btn${filter === t ? " grd-filter-btn--active" : ""}`}
             onClick={() => setFilter(t)}
           >
-            {t === "all" ? "All" : TYPE_LABELS[t]}
+            {t === "all" ? "All" : typeLabelFor(t, source)}
             <span className="grd-filter-btn__count">{typeCounts[t]}</span>
           </button>
         ))}
@@ -201,7 +213,7 @@ function DiscrepancyTable({
                 {visibleCols.map((col) => (
                   <td key={col} className="grd-td">
                     {col === "discrepancy_type" ? (
-                      <TypeBadge type={row.discrepancy_type} />
+                      <TypeBadge type={row.discrepancy_type} source={source} />
                     ) : col === "ooa_seconds" ? (
                       fmtOoa(row.ooa_seconds)
                     ) : col === "adherence_pct" ? (
@@ -247,11 +259,15 @@ function IntelligencePanel({ bullets }: { bullets: string[] }) {
 interface GttReportDashboardProps {
   report: ReconciliationReport;
   visibleColumns: (keyof DiscrepancyRow)[];
+  snapshotsToday?: ReportHistoryEntry[];
+  cards?: CommandCard[];
+  accountLabel?: string;
   onOpenConfig: () => void;
 }
 
-export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: GttReportDashboardProps) {
+export function GttReportDashboard({ report, visibleColumns, snapshotsToday, cards, accountLabel, onOpenConfig }: GttReportDashboardProps) {
   const [showPreview, setShowPreview] = useState(false);
+  const [showShiftReport, setShowShiftReport] = useState(false);
   const [view, setView] = useState<"table" | "charts">("table");
 
   return (
@@ -283,6 +299,13 @@ export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: Gtt
           >
             XLSX
           </button>
+          <button
+            className="grd-btn grd-btn--ghost"
+            onClick={() => setShowShiftReport(true)}
+            title="Full Attendance + Adherence + Intelligence shift report"
+          >
+            Full Shift Report
+          </button>
         </div>
       </div>
 
@@ -312,9 +335,9 @@ export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: Gtt
       </div>
 
       {view === "table" ? (
-        <DiscrepancyTable rows={report.discrepancies} visibleCols={visibleColumns} />
+        <DiscrepancyTable rows={report.discrepancies} visibleCols={visibleColumns} source={report.source} />
       ) : (
-        <ReportChartsPanel report={report} />
+        <ReportChartsPanel report={report} snapshotsToday={snapshotsToday ?? []} />
       )}
 
       {/* Intelligence */}
@@ -323,6 +346,33 @@ export function GttReportDashboard({ report, visibleColumns, onOpenConfig }: Gtt
       {/* Print preview modal */}
       {showPreview && (
         <ReportPreview report={report} onClose={() => setShowPreview(false)} />
+      )}
+
+      {/* Full Shift Report modal — Attendance + Adherence + Intelligence */}
+      {showShiftReport && (
+        <div
+          className="adm-backdrop"
+          role="dialog"
+          aria-modal="true"
+          aria-label="Full shift report"
+          onClick={(e) => { if (e.target === e.currentTarget) setShowShiftReport(false); }}
+        >
+          <div className="adm" style={{ maxWidth: 900, width: "90vw", maxHeight: "90vh", overflow: "auto" }}>
+            <div className="adm__header">
+              <span className="adm__title">Full Shift Report</span>
+              <div className="adm__header-right">
+                <button
+                  className="grd-btn grd-btn--ghost no-print"
+                  onClick={() => exportShiftReportPdf("shift-report-print", `shift-report-${report.date}`)}
+                >
+                  Export PDF
+                </button>
+                <button className="adm__close no-print" onClick={() => setShowShiftReport(false)} aria-label="Close">✕</button>
+              </div>
+            </div>
+            <ShiftReportPrintView report={report} cards={cards ?? []} accountLabel={accountLabel ?? report.functional_area} />
+          </div>
+        </div>
       )}
     </div>
   );

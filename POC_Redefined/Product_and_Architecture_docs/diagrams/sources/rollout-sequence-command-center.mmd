@@ -1,0 +1,56 @@
+%% Rollout Sequence — RTA Command Center bootstrap
+%% Source: Volume-4_Deployment-and-Operations/COMMAND_CENTER_ROLLOUT_SEQUENCE.md
+%% Purpose: the ten-step sequence for standing up the Command Center as its own hosted product on GCP, from repo access to first automation live.
+
+flowchart TD
+    S0["Step 0<br/>GitHub access + branch protection<br/><i>gated merges to main</i>"]
+    S1["Step 1<br/>Study Anshul's platform (read-only)<br/><i>borrow patterns, not the environment</i>"]
+    S2["Step 2<br/>Provision dedicated GCP project(s)<br/><i>dev / staging / prod isolation</i>"]
+    S3["Step 3<br/>IAM + service accounts<br/><i>least-privilege, one identity per automation</i>"]
+    S4["Step 4<br/>Secret Manager<br/><i>credentials never in code</i>"]
+    S5["Step 5<br/>Compute: Cloud Run / Cloud Run Jobs<br/>+ Cloud Scheduler<br/><i>where automations execute</i>"]
+    S6["Step 6<br/>Trigger API + IAP / SSO<br/><i>user's laptop only calls, never runs prod code</i>"]
+    S7["Step 7<br/>Cloud SQL (Postgres) + Cloud Storage<br/><i>state and run history</i>"]
+    S8["Step 8<br/>Cloud Logging + Monitoring + Error Reporting<br/><i>observability layer</i>"]
+    S9["Step 9<br/>CI/CD: Cloud Build → Artifact Registry → Cloud Run<br/><i>reproducible, reviewed deploys</i>"]
+    S10["Step 10<br/>First automation, end-to-end<br/><i>the template for every one after it</i>"]
+
+    S0 --> S1 --> S2 --> S3 --> S4 --> S5
+    S5 --> S6
+    S5 --> S7
+    S6 --> S8
+    S7 --> S8
+    S8 --> S9 --> S10
+
+    subgraph FOUNDATION["Foundation"]
+        S0
+        S1
+        S2
+    end
+
+    subgraph IDENTITY["Identity & Secrets"]
+        S3
+        S4
+    end
+
+    subgraph RUNTIME["Runtime & Data"]
+        S5
+        S6
+        S7
+    end
+
+    subgraph OPS["Delivery & Observability"]
+        S8
+        S9
+        S10
+    end
+
+    classDef foundation fill:#1b2838,stroke:#4a7ba6,color:#e6edf3
+    classDef identity fill:#2a1f3d,stroke:#8b6bb1,color:#e6edf3
+    classDef runtime fill:#1f3d2a,stroke:#5aa06e,color:#e6edf3
+    classDef ops fill:#3d2a1f,stroke:#b17b4a,color:#e6edf3
+
+    class S0,S1,S2 foundation
+    class S3,S4 identity
+    class S5,S6,S7 runtime
+    class S8,S9,S10 ops

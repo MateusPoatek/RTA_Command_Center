@@ -23,7 +23,7 @@ need to parse, learn from, or act on reconciliation report data.
     "generated_by": "gtt_verint_reconciler.py",
     "sources": ["gtt", "verint"],
     "join_strategy": "surname_exact_then_fuzzy",
-    "ai_context": "discrepancy_type enum: clocked_in_not_in_adherence | in_adherence_no_clock_in | clocked_out_still_active | not_yet_scheduled | match_ok",
+    "ai_context": "discrepancy_type enum: clocked_in_not_in_adherence | in_adherence_no_clock_in (present, counts as attending — excluded from discrepancy_count) | no_clock_in_no_activity (real absence) | clocked_out_still_active | not_yet_scheduled | match_ok",
     "fuzzy_match_available": true,
     "earliest_shift_start": "2026-06-16T13:00:00+00:00",
     "latest_shift_end": "2026-06-16T21:30:00+00:00"
@@ -123,11 +123,12 @@ note above; one row per person, not one per GTT event).
 |-------|---------|---------------|
 | `match_ok` | Agent present in both GTT and Verint. No gap. | None needed. |
 | `clocked_in_not_in_adherence` | GTT has a clock_in but the agent did not appear in the Verint adherence scan. | Investigate: late login, wrong LOB filter, or missed capture window. |
-| `in_adherence_no_clock_in` | Verint shows the agent working, but no GTT clock_in exists, **and their own shift has already started**. | Possible attendance logging gap or badge-in after midnight cutoff. |
+| `in_adherence_no_clock_in` | Verint shows the agent working (real productive/adherence minutes), but no GTT clock_in exists, **and their own shift has already started**. Counted as **attending** — they ARE working, just missed the GTT clock-in. | Optional: flag for a late badge-in, but not a real gap. Excluded from `discrepancy_count`. |
+| `no_clock_in_no_activity` | No GTT clock_in AND no Verint activity/productive minutes either, and their shift has already started. | Real attendance gap — investigate. |
 | `clocked_out_still_active` | GTT shows clock_out, but Verint still lists the agent as active. | Ghost session — notify supervisor to confirm agent is actually off. |
 | `not_yet_scheduled` | Verint shows the agent, but no GTT clock_in exists **because their scheduled shift hasn't started yet** (per their own **`scheduled_start_iso`** — the *planned* schedule from `publishedSchedule.events[]` — relative to report-generation time). Note: this deliberately does NOT use `shift_start_iso` (the *actual*-worked timeline), which is empty for anyone who hasn't started and so can never signal "not yet started." | None needed — not a real gap. Excluded from `discrepancy_count`. GTT is a cumulative log that fills in through the day; Verint shows who's currently present regardless of shift start, so this is expected, not a bug. |
 
-**`discrepancy_count`** (top-level field) excludes both `match_ok` and `not_yet_scheduled` — it's meant to represent *real* attendance/adherence gaps only.
+**`discrepancy_count`** (top-level field) excludes `match_ok`, `not_yet_scheduled`, and `in_adherence_no_clock_in` — it's meant to represent *real* attendance/adherence gaps only, and someone working per Verint isn't a gap just because GTT didn't see a clock-in.
 
 ---
 

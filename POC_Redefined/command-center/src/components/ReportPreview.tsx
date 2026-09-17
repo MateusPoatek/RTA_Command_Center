@@ -5,16 +5,9 @@
  * @media print styles (in App.css) hide the surrounding UI when this is open.
  */
 
-import type { ReconciliationReport, DiscrepancyType } from "../domain/types";
+import type { ReconciliationReport } from "../domain/types";
 import { exportReportPdf } from "../utils/export";
-
-const TYPE_LABELS: Record<DiscrepancyType, string> = {
-  clocked_in_not_in_adherence: "No Verint record",
-  in_adherence_no_clock_in:    "No GTT clock-in",
-  clocked_out_still_active:    "Ghost session",
-  not_yet_scheduled:           "Shift not started",
-  match_ok:                    "OK",
-};
+import { typeLabelFor } from "../utils/reportLabels";
 
 interface ReportPreviewProps {
   report: ReconciliationReport;
@@ -58,13 +51,20 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
 
           {/* Summary */}
           <div style={{ display: "flex", gap: "2rem", marginBottom: "1.25rem", flexWrap: "wrap" }}>
-            {([
-              ["GTT Attendance", report.gtt_total],
-              ["Verint Captured", report.verint_total],
-              ["Matched", report.matched],
-              ["Discrepancies", report.discrepancy_count],
-              ["Generated", new Date(report.generated_at).toLocaleString()],
-            ] as [string, string | number][]).map(([label, val]) => (
+            {((report.source === "verint_only"
+              ? [
+                  ["Verint Captured", report.verint_total],
+                  ["Attendance Gaps", report.discrepancy_count],
+                  ["Generated", new Date(report.generated_at).toLocaleString()],
+                ]
+              : [
+                  ["GTT Attendance", report.gtt_total],
+                  ["Verint Captured", report.verint_total],
+                  ["Matched", report.matched],
+                  ["Discrepancies", report.discrepancy_count],
+                  ["Generated", new Date(report.generated_at).toLocaleString()],
+                ]
+            ) as [string, string | number][]).map(([label, val]) => (
               <div key={label} style={{ minWidth: 120 }}>
                 <div style={{ fontSize: "0.7rem", opacity: 0.6, textTransform: "uppercase", letterSpacing: "0.05em" }}>{label}</div>
                 <div style={{ fontSize: "1.1rem", fontWeight: 600, marginTop: 2 }}>{val}</div>
@@ -86,7 +86,10 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
           <table style={{ width: "100%", borderCollapse: "collapse", fontSize: "0.78rem" }}>
             <thead>
               <tr style={{ background: "#1e293b" }}>
-                {["Employee", "Subgroup", "GTT Events", "Verint Status", "Adh %", "OOA", "Productive", "Type"].map((h) => (
+                {(report.source === "verint_only"
+                  ? ["Employee", "Verint Status", "Adh %", "OOA", "Productive", "Type"]
+                  : ["Employee", "Subgroup", "GTT Events", "Verint Status", "Adh %", "OOA", "Productive", "Type"]
+                ).map((h) => (
                   <th key={h} style={{ padding: "6px 8px", textAlign: "left", fontWeight: 600, color: "#94a3b8", borderBottom: "1px solid #334155" }}>{h}</th>
                 ))}
               </tr>
@@ -95,8 +98,12 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
               {report.discrepancies.map((row, i) => (
                 <tr key={i} style={{ background: i % 2 === 0 ? "transparent" : "#0f172a22", borderBottom: "1px solid #1e293b" }}>
                   <td style={{ padding: "5px 8px" }}>{row.employee}</td>
-                  <td style={{ padding: "5px 8px" }}>{row.subgroup || "—"}</td>
-                  <td style={{ padding: "5px 8px" }}>{row.gtt_event}</td>
+                  {report.source !== "verint_only" && (
+                    <>
+                      <td style={{ padding: "5px 8px" }}>{row.subgroup || "—"}</td>
+                      <td style={{ padding: "5px 8px" }}>{row.gtt_event}</td>
+                    </>
+                  )}
                   <td style={{ padding: "5px 8px" }}>{row.verint_status || "—"}</td>
                   <td style={{ padding: "5px 8px" }}>{row.adherence_pct !== null ? `${row.adherence_pct}%` : "—"}</td>
                   <td style={{ padding: "5px 8px" }}>{row.ooa_seconds ? `${Math.floor(row.ooa_seconds / 60)}m` : "—"}</td>
@@ -104,12 +111,12 @@ export function ReportPreview({ report, onClose }: ReportPreviewProps) {
                   <td style={{ padding: "5px 8px" }}>
                     <span style={{
                       fontSize: "0.7rem", padding: "2px 6px", borderRadius: 4,
-                      background: row.discrepancy_type === "match_ok" ? "#22c55e22"
+                      background: row.discrepancy_type === "match_ok" || row.discrepancy_type === "in_adherence_no_clock_in" ? "#22c55e22"
                         : row.discrepancy_type === "not_yet_scheduled" ? "#64748b22" : "#ef444422",
-                      color: row.discrepancy_type === "match_ok" ? "#22c55e"
+                      color: row.discrepancy_type === "match_ok" || row.discrepancy_type === "in_adherence_no_clock_in" ? "#22c55e"
                         : row.discrepancy_type === "not_yet_scheduled" ? "#64748b" : "#ef4444",
                     }}>
-                      {TYPE_LABELS[row.discrepancy_type]}
+                      {typeLabelFor(row.discrepancy_type, report.source)}
                     </span>
                   </td>
                 </tr>

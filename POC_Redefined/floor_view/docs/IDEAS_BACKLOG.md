@@ -65,6 +65,43 @@ schema (audience · cadence · questions · sources · KPIs+confidence) + a shif
 
 ---
 
+## 4. Google Chat slash-command bot (`/attreport`, `/statuscheck`)
+
+**Idea (Mateus, 2026-09-02):** an RTA types `/attreport` or `/statuscheck` directly in the Google Chat space and gets
+the current Command Center report back as a reply — no need to open the app.
+
+**Why deferred:** the incoming webhook we already use for outbound alerts (`GCHAT_WEBHOOK_<ACCOUNT>`,
+`local_api.py` `/dispatch-alert`) is one-way — it can push into a space but has no way to *receive* a typed message.
+Reacting to a slash command needs one of two real integration paths, each with an access/infra requirement outside
+this codebase:
+
+- **A real Chat app** registered in Google Cloud Console with `/attreport` as a defined slash command, plus a public
+  HTTPS endpoint Google's servers can call synchronously (`local_api.py` is localhost-only today — would need ngrok
+  for testing or an actual deployment for real use).
+- **A polling bot**: a backend loop reads the space's message history via the Chat API on an interval, looks for a
+  message starting with `/attreport`, and replies via the existing webhook. No public endpoint needed, but requires a
+  service account with read access to that space (member of the space, or domain-wide delegation) and tolerates
+  poll-interval lag, not instant replies.
+
+**Blocked on:** Mateus confirming whether he has the Google Workspace/Cloud access either path needs. **No action
+until then** — revisit once the Full Shift Report (composed Attendance + Adherence + Intelligence, see the
+`ShiftReportPrintView` work) has something worth replying with.
+
+---
+
+## 5. Verint capture extension — auto-detect and auto-page the calendar
+
+**Idea (Mateus, 2026-09-15):** the extension already reliably captures attendance/adherence from Verint's calendar
+view (alerts + productive hours) — confirmed working well. Suggested improvement: have it detect how many pages of
+agents the current calendar view has, then automatically capture every page at a set time interval, instead of
+relying on whatever's manually paged into view at capture time.
+
+**Why deferred:** raised as an aside during the Verint-only reporting work, not scoped/estimated yet — needs its own
+look at `verint_extension/` (content_cc.js/parse.js) to find where page count could be read from the DOM and how the
+existing capture-interval/scheduling logic would extend to a multi-page walk.
+
+---
+
 ## How these relate
 
 All three are facets of the **platform** the POC is becoming: #1 is how we *operate* it at fleet scale, #2 is the

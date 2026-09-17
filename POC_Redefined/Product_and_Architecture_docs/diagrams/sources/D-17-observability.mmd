@@ -1,0 +1,101 @@
+%% D-17 Observability
+%% Source: ../docs/engineering/DEPLOYMENT_AND_OPERATIONS.md §6, ../docs/OBSERVABILITY_DRY_RUN.md, folds in ../docs/engineering/diagrams/mmd/05-connector-failprevention.mmd
+%% Purpose: the observability model — Health, Logs, Trace, Audit, Telemetry: what each captures and where it flows; P1 audit-query proof made visible
+
+flowchart TB
+
+subgraph resilience ["Resilience view (connector fail-prevention — folded in from 05-connector-failprevention.mmd)"]
+  direction TB
+
+  subgraph bankTier ["No-access tier (bank-tier client / Citrix)"]
+    direction TB
+    c1["1. Verint REST (Track B)<br/>PRIMARY — if credential granted"]
+    c2["2. Vision/OCR in-VDI (Track A)<br/>FALLBACK"]
+    c3["3. File export (GScript)<br/>EMERGENCY batch"]
+    c1 -. "unavailable" .-> c2
+    c2 -. "unavailable" .-> c3
+  end
+
+  subgraph epicTier ["Full/partial-access tier (EPIC / web Verint)"]
+    direction TB
+    e1["1. Browser Extension<br/>PRIMARY"]
+    e2["2. netcap (Playwright/CDP)<br/>ALTERNATIVE / test"]
+    e3["3. Verint REST<br/>if credentialed"]
+    e1 -. "unavailable" .-> e2
+    e2 -. "unavailable" .-> e3
+  end
+
+  norm["normalize<br/>(AgentRow[])"]
+  conf{"row normalizes?"}
+  except["Exception card<br/>confidence 0.0<br/>targetChannels: audit-only<br/>-> HITL review"]
+  multi["Multi-source confirmation"]
+  trust["Trusted CommandCard<br/>-> Command Center"]
+
+  c1 --> norm
+  c2 --> norm
+  c3 --> norm
+  e1 --> norm
+  e2 --> norm
+  e3 --> norm
+  norm --> conf
+  conf -- "no" --> except
+  conf -- "yes" --> multi
+  multi --> trust
+end
+
+subgraph pillars ["Observability model — five pillars"]
+  direction TB
+
+  health["HEALTH<br/>captures: connector tier state (primary/fallback/emergency),<br/>circuit-breaker status, capture-freshness signal<br/>(interaction-driven refresh, no idle timer, gentle re-trigger)"]
+  healthSink["-> Ops dashboards + alerting<br/>('capture degraded' runbook trigger)"]
+
+  logsNode["LOGS<br/>captures: structured app logs,<br/>exception-card detail, adapter errors"]
+  logsSink["-> Log aggregator"]
+
+  trace["TRACE<br/>captures: correlation ID per row,<br/>capture -> normalize -> triage -><br/>card_builder -> dispatch"]
+  traceSink["-> Tracing backend"]
+
+  audit["AUDIT<br/>captures: every CommandCard action,<br/>agreement & disagreement (multi-source),<br/>all actor identities incl. AI, append-only / WORM, hash-chained"]
+  auditStore["-> Audit store<br/>(immutable, hash-chained)"]
+
+  telemetry["TELEMETRY<br/>captures: poll cadence, queue depth,<br/>dispatch latency, per-tenant volume"]
+  telemetrySink["-> Intelligent Insights / SIEM export"]
+
+  health --> healthSink
+  logsNode --> logsSink
+  trace --> traceSink
+  audit --> auditStore
+  telemetry --> telemetrySink
+end
+
+p1["P1 PROOF — standing operational check<br/>query: actor = 'ai' AND action = write(external)<br/>expected result: ZERO ROWS, always"]
+
+%% Resilience feeds observability
+except -. "logged" .-> audit
+trust -. "logged" .-> audit
+multi -. "logged" .-> audit
+bankTier -. "tier state" .-> health
+epicTier -. "tier state" .-> health
+norm -. "throughput" .-> telemetry
+trust -. "correlation ID" .-> trace
+
+%% P1 proof runs against the audit store
+auditStore --> p1
+
+classDef bankTierClass fill:#fef2f2,stroke:#dc2626,color:#7f1d1d
+classDef epic fill:#eef2ff,stroke:#6366f1,color:#3730a3
+classDef core fill:#fefce8,stroke:#64748b,color:#1e293b
+classDef warn fill:#fff7ed,stroke:#ea580c,color:#7c2d12
+classDef store fill:#f0fdf4,stroke:#16a34a,color:#14532d
+classDef pillar fill:#eef2ff,stroke:#4338ca,color:#312e81
+classDef sink fill:#f8fafc,stroke:#64748b,color:#1e293b
+classDef proof fill:#dcfce7,stroke:#16a34a,color:#14532d,stroke-width:3px
+
+class c1,c2,c3 bankTierClass
+class e1,e2,e3 epic
+class norm,conf,multi,trust core
+class except warn
+class audit,auditStore store
+class health,logsNode,trace,telemetry pillar
+class healthSink,logsSink,traceSink,telemetrySink sink
+class p1 proof

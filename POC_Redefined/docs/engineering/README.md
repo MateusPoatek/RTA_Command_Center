@@ -6,7 +6,7 @@
 
 This subtree (`POC_Redefined/docs/engineering/`) is the **production design**. It is built *on* the POC — it does not restate it. Where a topic's source of truth is one of the original 18 docs in `../`, this set links to it; where the production answer is new, this set owns it (see the supersedes/references table below).
 
-The POC is proven end-to-end on live EPIC Verint: a browser extension reads Verint's read-only API in the RTA's browser, the rules core (`verint_normalize → verint_triage → card_builder`, 44 tests) turns it into cards, and the React Command Center renders them. This set describes how that becomes a hardened, deployable product that runs for very different clients — from a `none`-access, Citrix-locked bank (CIBC) to a `full`-access web-Verint shop (EPIC).
+The POC is proven end-to-end on live EPIC Verint: a browser extension reads Verint's read-only API in the RTA's browser, the rules core (`verint_normalize → verint_triage → card_builder`, 44 tests) turns it into cards, and the React Command Center renders them. This set describes how that becomes a hardened, deployable product that runs for very different clients — from a `none`-access, Citrix-locked bank-tier client to a `full`-access web-Verint shop (EPIC).
 
 ## The four locked decisions (the foundation)
 

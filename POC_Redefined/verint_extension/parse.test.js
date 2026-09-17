@@ -239,3 +239,45 @@ test("extractRoster buckets actualSchedule events by hour of day (hourly_buckets
   assert.deepEqual(buckets[hour14], { activeMinutes: 240, productiveMinutes: 240 });
   assert.deepEqual(buckets[hour18], { activeMinutes: 60, productiveMinutes: 30 });
 });
+
+// --------------------------------------------------------------------------
+// Name resolution: workResourceDetails.name (carried in the SAME
+// calendar-filter payload as the violations) must resolve the name even
+// when the separate `workResources` capture never included this employee —
+// that gap used to fall back to a bare numeric employee id in Chat alerts,
+// and silently DROPPED the employee from extractRoster's output entirely.
+// --------------------------------------------------------------------------
+
+const censusMissingFromWorkResources = {
+  data: { attributes: { resourceData: [
+    { id: 2001,
+      workResourceDetails: { id: 2001, name: { first: "Delta", last: "NoWorkResource" }, organizationName: "BPO_Global_DEMO_Cards" },
+      adherenceSummary: { publishedMinutesPerInterval: [600], violationMinutesPerInterval: [150] } },
+  ] } },
+};
+const targetedMissingFromWorkResources = {
+  data: { attributes: { resourceData: [
+    { id: 2001,
+      adherence: { violations: [
+        { employeeId: 2001, plannedActivityName: "Email", startTime: "2025-05-12T15:00:00Z", endTime: "2025-05-12T15:20:00Z", actualEventData: [{ label: "Break" }] },
+      ] } },
+  ] } },
+};
+
+test("buildCards falls back to workResourceDetails.name when workResources capture doesn't include this employee", () => {
+  const cards = RTAParse.buildCards(
+    { calendarFilters: [censusMissingFromWorkResources, targetedMissingFromWorkResources], workResources: [] },
+    { lob: "DEMO", target: 15, snapshotTime: "2026-06-11T12:00:00Z" },
+  );
+  assert.equal(cards.length, 1);
+  assert.equal(cards[0].agent.name, "NoWorkResource, Delta");
+});
+
+test("extractRoster includes an employee resolved only via workResourceDetails.name (previously silently skipped)", () => {
+  const rows = RTAParse.extractRoster(
+    { calendarFilters: [censusMissingFromWorkResources, targetedMissingFromWorkResources], workResources: [] },
+    { lob: "DEMO" },
+  );
+  assert.equal(rows.length, 1);
+  assert.equal(rows[0].name, "NoWorkResource, Delta");
+});

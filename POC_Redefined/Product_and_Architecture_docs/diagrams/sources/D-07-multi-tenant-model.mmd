@@ -1,0 +1,49 @@
+%% D-07 Multi-Tenant Model
+%% Source: POC_Redefined/docs/engineering/FDAE_CONFIGURATION_LAYER.md
+%% Purpose: one OCI image, many tenant manifests (P3); what is per-tenant
+
+flowchart TB
+
+    Image(["ONE OCI Image<br/>(rules core + adapters, unchanged per account)"])
+
+    subgraph M1 ["Tenant Manifest — banktier / prod / v14"]
+        direction TB
+        T1["Tenant<br/>banktier — bank-tier client GT/PH"]
+        L1["LOB<br/>TLB (Guatemala), ..."]
+        U1["Users<br/>RTA / Supervisor / OM / Tenant Admin"]
+        Pol1["Policies<br/>accessTier: none · deployment: in-client-cloud"]
+        Th1["Thresholds<br/>longCallSeconds: 540 · longHoldSeconds: 180"]
+        S1["Secrets<br/>credentialRef -> Vault (never inline)"]
+        I1["Integrations<br/>capture: verint_rest, vision_ocr<br/>dispatch: google-chat-lob, servicenow"]
+        R1["Reports<br/>governance.retention: 365d / 84mo<br/>benchmarkingOptIn: false"]
+        F1["Feature Flags<br/>rules.lobFromConfig: true"]
+        T1 --> L1 --> U1 --> Pol1 --> Th1 --> S1 --> I1 --> R1 --> F1
+    end
+
+    subgraph M2 ["Tenant Manifest — epic / prod / v7"]
+        direction TB
+        T2["Tenant<br/>epic"]
+        L2["LOB<br/>(epic's own LOB set)"]
+        U2["Users<br/>RTA / Supervisor / OM / Tenant Admin"]
+        Pol2["Policies<br/>accessTier: full · deployment: vendor-hosted"]
+        Th2["Thresholds<br/>(epic-specific values)"]
+        S2["Secrets<br/>credentialRef -> Vault (never inline)"]
+        I2["Integrations<br/>capture/dispatch adapters chosen for epic"]
+        R2["Reports<br/>governance.retention (epic policy)"]
+        F2["Feature Flags<br/>rules.lobFromConfig: true"]
+        T2 --> L2 --> U2 --> Pol2 --> Th2 --> S2 --> I2 --> R2 --> F2
+    end
+
+    Image -->|"binds manifest v14<br/>(boot: read -> wire deterministically)"| T1
+    Image -->|"binds manifest v7<br/>(boot: read -> wire deterministically)"| T2
+
+    Note["Same image + same manifest -> same wiring.<br/>Everything tenant-specific lives HERE, not in code.<br/>Adding tenant N = new manifest, zero code fork."]
+    Image -.-> Note
+
+    classDef image fill:#ede9fe,stroke:#7c3aed,color:#4c1d95
+    classDef tenant fill:#eef2ff,stroke:#6366f1,color:#3730a3
+    classDef note fill:#f8fafc,stroke:#94a3b8,stroke-dasharray:4 3,color:#334155
+
+    class Image image
+    class T1,L1,U1,Pol1,Th1,S1,I1,R1,F1,T2,L2,U2,Pol2,Th2,S2,I2,R2,F2 tenant
+    class Note note

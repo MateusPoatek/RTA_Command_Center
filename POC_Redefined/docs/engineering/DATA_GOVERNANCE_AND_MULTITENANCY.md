@@ -10,7 +10,7 @@
 *Tenant = client; the tenant manifest is the governing artifact ([FDAE_CONFIGURATION_LAYER.md](./FDAE_CONFIGURATION_LAYER.md)); **access tier** (`full`/`partial`/`none`) and **deployment** (in-client-cloud/vendor-hosted) are manifest properties (D1).*
 
 ## 2. Isolation tiers (D1 / D3)
-*What "isolated" means at storage, compute, network, and key level per deployment. Recommendation, strongest→weakest: separate DB per tenant (CIBC, region-locked, in-client-cloud) > separate schema (vendor-hosted) > row-level tenant key (not for in-client-cloud/bank deployments).*
+*What "isolated" means at storage, compute, network, and key level per deployment. Recommendation, strongest→weakest: separate DB per tenant (bank-tier client, region-locked, in-client-cloud) > separate schema (vendor-hosted) > row-level tenant key (not for in-client-cloud/bank deployments).*
 
 ## 3. The three-store model (D2 seams)
 *Operational + audit store (immutable, low-latency, compliance) · intelligence store (derived, per-tenant, analytical) · secrets vault. The operational store is the source of record; the intelligence store is derived and rebuildable from the event stream — keep them separate.*
@@ -28,4 +28,4 @@
 *One signed image; config (manifest) vs code separation; no per-client code forks; the governance invariant (no AI writes) as a data-integrity guarantee.*
 
 ## 8. Cross-client benchmarking — design-only (D3)
-*Default: no cross-tenant reads, ever, enforced physically by the isolation model. Shape the surrogate-key + aggregation model so opt-in, k-anonymized, legal-gated benchmarking is **possible later** (computed in a separate aggregation environment that only receives pre-anonymized rollups). For CIBC: out of scope until legal signs off; make accidental commingling impossible.*
+*Default: no cross-tenant reads, ever, enforced physically by the isolation model. Shape the surrogate-key + aggregation model so opt-in, k-anonymized, legal-gated benchmarking is **possible later** (computed in a separate aggregation environment that only receives pre-anonymized rollups). For a bank-tier client: out of scope until legal signs off; make accidental commingling impossible.*

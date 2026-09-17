@@ -1,0 +1,114 @@
+flowchart TB
+
+subgraph rtaCommandCenter ["RTA Command Center — Integration Hub"]
+
+  subgraph dataIngestion ["Data Ingestion Layer"]
+    verintConnector["Verint Connector\n(Extension Bridge → REST API)"]
+    niceConnector["NICE IEX Connector\n(2nd WFM vendor — expansion, adapter-blind)"]
+    gttConnector["GTT Connector\nAttendance data — real-time"]
+    tableauConnector["Tableau Connector\nSLA + occupancy — 11:30am EST"]
+  end
+
+  subgraph aiOrchestration ["AI Orchestration Layer (FuelIX / Azure OpenAI)"]
+    anaBot["ANA Bot\nNLP + intent classification"]
+    alertEngine["Alert Rules Engine\nAdherence + SLA + queue thresholds"]
+    cardBuilder["CommandCard Builder\nSeverity + confidence + draft message"]
+    copilot["Copilot Panel\nWhy / Recommend / Draft — streaming"]
+  end
+
+  subgraph humanGate ["Human-in-the-Loop Gate — Command Center differentiator"]
+    rtaDecision["RTA Decision Surface\nApprove / Edit / Suppress / Escalate"]
+    floorView["Floor View\nReal-time per-LOB alert radar"]
+    auditTrail["Audit Trail\nImmutable — every decision logged"]
+    learningSignals["Learning Signals\nRTA corrections → model fine-tuning"]
+  end
+
+  subgraph dispatchLayer ["Dispatch Layer"]
+    gchatDispatch["Google Chat\nReal-time floor alerts (GChat/Tablets)"]
+    teamsDispatch["Microsoft Teams\nWorkforce + Philippines RTA coordination"]
+    emailDispatch["Email\nAttendance reports + EOD summaries"]
+  end
+
+end
+
+subgraph existingPlatform ["Existing Telus WFM Automation Platform (reuse — Anshul Gaddoo)"]
+  aaControlRoom["Automation Anywhere Control Room\nOrchestrator (existing)"]
+  intelligentInsights["Intelligent Insights\nObservability + audit spine\nbusiness → VP → director → bot\nEOD / weekly / monthly reports"]
+end
+
+subgraph externalSystems ["External Systems"]
+  verintWFM["Verint WFM\nSchedule / Adherence / Calendar"]
+  niceIEX["NICE IEX\nWFM adherence — 2nd vendor\n(already read by existing platform)"]
+  gttSystem["GTT (Global Time Tracker)\nAgent login tracking — only real-time source"]
+  serviceNow["ServiceNow\nTicket creation + status (70–90 tickets/day)"]
+  workday["Workday\nPTO management + absence records"]
+  awsConnect["AWS Connect\nCall routing + queue depth metrics"]
+  tableauServer["Tableau\nService level + occupancy dashboards"]
+  googleSheets["Google Sheets\nRoster, matrix, allocation calculators"]
+end
+
+%% Ingestion flows
+verintWFM -->|"API response tee (extension)\nor REST API (production)"| verintConnector
+niceIEX -.->|"capture adapter (expansion)"| niceConnector
+gttSystem -->|"ATOS Report API\nor direct feed"| gttConnector
+tableauServer -->|"Looker/Tableau API\n(11:30am refresh)"| tableauConnector
+
+%% AI processing
+verintConnector --> alertEngine
+niceConnector -.-> alertEngine
+gttConnector --> alertEngine
+tableauConnector --> alertEngine
+alertEngine --> anaBot
+anaBot --> cardBuilder
+cardBuilder --> copilot
+
+%% Orchestration (reuse existing)
+aaControlRoom -.->|"orchestrates jobs"| alertEngine
+aaControlRoom -.->|"orchestrates jobs"| cardBuilder
+
+%% Human gate
+cardBuilder --> rtaDecision
+copilot --> rtaDecision
+alertEngine --> floorView
+rtaDecision --> auditTrail
+rtaDecision --> learningSignals
+
+%% Observability + audit into existing spine (reuse)
+auditTrail -.->|"logs / exceptions / STP metrics"| intelligentInsights
+floorView -.->|"telemetry"| intelligentInsights
+intelligentInsights -.->|"scheduled reports"| emailDispatch
+
+%% Dispatch
+rtaDecision -->|"Approved"| gchatDispatch
+rtaDecision -->|"Approved"| teamsDispatch
+rtaDecision -->|"Report ready"| emailDispatch
+
+%% Bi-directional integrations
+rtaDecision -.->|"Create / update ticket"| serviceNow
+serviceNow -.->|"Ticket status updates"| cardBuilder
+rtaDecision -.->|"Absence justification"| workday
+workday -.->|"PTO / absence records"| cardBuilder
+awsConnect -.->|"Queue depth + IVR stats"| alertEngine
+googleSheets -.->|"Roster + allocation data"| cardBuilder
+
+subgraph legend ["Legend"]
+  l1["Solid arrow = Active data flow"]
+  l2["Dashed arrow = Bi-directional / planned / expansion"]
+  l3["Blue nodes = existing Telus platform (reuse, not rebuilt)"]
+end
+
+classDef automated fill:#4B286D,stroke:#3A1F54,color:#FFFFFF
+classDef aiNode fill:#E3F6D1,stroke:#1F5C09,color:#1F5C09
+classDef humanNode fill:#EFEDFF,stroke:#7C53A5,color:#3F2A54
+classDef externalNode fill:#E8E8E8,stroke:#666666,color:#2C2C2C
+classDef dispatchNode fill:#66CC00,stroke:#2B8000,color:#FFFFFF
+classDef reuseNode fill:#CFE2FF,stroke:#0A58CA,color:#08306B
+classDef futureNode fill:#FFF3CD,stroke:#997404,color:#664D03
+
+class verintConnector,gttConnector,tableauConnector,alertEngine,cardBuilder automated
+class anaBot,copilot aiNode
+class rtaDecision,floorView,auditTrail,learningSignals humanNode
+class verintWFM,gttSystem,serviceNow,workday,awsConnect,tableauServer,googleSheets externalNode
+class gchatDispatch,teamsDispatch,emailDispatch dispatchNode
+class aaControlRoom,intelligentInsights reuseNode
+class niceConnector,niceIEX futureNode

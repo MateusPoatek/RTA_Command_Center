@@ -5,7 +5,11 @@
  *   · Data Source  — functional area, sites
  *   · Columns      — which DiscrepancyRow fields to show in the table
  *   · Recipients   — comma-separated emails (clipboard copy for MVP)
- *   · Schedule     — off / daily / weekly (stored in localStorage)
+ *   · Schedule     — off / 3x-day / 5x-day / custom times (stored in localStorage,
+ *                    executed by useReportScheduler in App.tsx)
+ *   · Chat Digest  — send a combined Attendance+Adherence summary to Google
+ *                    Chat now, or automatically every 30 min (independent of
+ *                    Schedule above — see sendChatDigest in App.tsx)
  *   · History      — past report summaries with intelligence bullets
  *
  * State persisted to localStorage["rta.report.config"] and ["rta.report.history"].
@@ -17,7 +21,9 @@ import type {
   ReportHistoryEntry,
   DiscrepancyRow,
   DEFAULT_REPORT_CONFIG,
+  AccountId,
 } from "../domain/types";
+import { ACCOUNT_CATALOG } from "../domain/accounts";
 
 const ALL_COLUMNS: { key: keyof DiscrepancyRow; label: string }[] = [
   { key: "employee",          label: "Employee" },
@@ -36,48 +42,54 @@ const ALL_COLUMNS: { key: keyof DiscrepancyRow; label: string }[] = [
   { key: "discrepancy_type",  label: "Discrepancy Type" },
 ];
 
-const STORAGE_CONFIG  = "rta.report.config";
-const STORAGE_HISTORY = "rta.report.history";
+// Keyed per-account — a global key here was the root of the account-mixing
+// bug (switching from EPIC to CORELOGIC kept showing EPIC's functionalArea/
+// sites/schedule until the RTA manually edited the panel again).
+const storageConfigKey  = (accountId: string) => `rta.report.config.${accountId}`;
+const storageHistoryKey = (accountId: string) => `rta.report.history.${accountId}`;
 
-function loadConfig(defaults: ReportConfig): ReportConfig {
+export function loadReportConfig(accountId: string, defaults: ReportConfig): ReportConfig {
   try {
-    const raw = localStorage.getItem(STORAGE_CONFIG);
+    const raw = localStorage.getItem(storageConfigKey(accountId));
     return raw ? { ...defaults, ...JSON.parse(raw) } : defaults;
   } catch {
     return defaults;
   }
 }
 
-export function loadHistory(): ReportHistoryEntry[] {
+export function loadHistory(accountId: string): ReportHistoryEntry[] {
   try {
-    const raw = localStorage.getItem(STORAGE_HISTORY);
+    const raw = localStorage.getItem(storageHistoryKey(accountId));
     return raw ? JSON.parse(raw) : [];
   } catch {
     return [];
   }
 }
 
-export function saveHistoryEntry(entry: ReportHistoryEntry): void {
-  const history = loadHistory();
+export function saveHistoryEntry(accountId: string, entry: ReportHistoryEntry): void {
+  const history = loadHistory(accountId);
   const updated = [entry, ...history.filter((h) => h.date !== entry.date)].slice(0, 30);
-  localStorage.setItem(STORAGE_HISTORY, JSON.stringify(updated));
+  localStorage.setItem(storageHistoryKey(accountId), JSON.stringify(updated));
 }
 
 interface ReportConfigPanelProps {
+  accountId: string;
   defaults: ReportConfig;
   onClose: () => void;
   onConfigSave: (cfg: ReportConfig) => void;
+  /** Sends the Attendance + Adherence digest to Google Chat right now, independent of the toggle below. */
+  onSendChatDigestNow: () => void;
 }
 
-export function ReportConfigPanel({ defaults, onClose, onConfigSave }: ReportConfigPanelProps) {
-  const [cfg, setCfg] = useState<ReportConfig>(() => loadConfig(defaults));
-  const [history, setHistory] = useState<ReportHistoryEntry[]>(() => loadHistory());
+export function ReportConfigPanel({ accountId, defaults, onClose, onConfigSave, onSendChatDigestNow }: ReportConfigPanelProps) {
+  const [cfg, setCfg] = useState<ReportConfig>(() => loadReportConfig(accountId, defaults));
+  const [history, setHistory] = useState<ReportHistoryEntry[]>(() => loadHistory(accountId));
   const [historyOpen, setHistoryOpen] = useState(false);
   const [copied, setCopied] = useState(false);
 
   function persist(next: ReportConfig) {
     setCfg(next);
-    localStorage.setItem(STORAGE_CONFIG, JSON.stringify(next));
+    localStorage.setItem(storageConfigKey(accountId), JSON.stringify(next));
   }
 
   function toggleColumn(key: keyof DiscrepancyRow) {
@@ -121,23 +133,53 @@ export function ReportConfigPanel({ defaults, onClose, onConfigSave }: ReportCon
 
           {/* Data Source */}
           <section>
-            <div className="grd-section-label">Data Source</div>
-            <label className="grd-field-label">Functional Area
-              <input
-                className="grd-input"
-                value={cfg.functionalArea}
-                onChange={(e) => persist({ ...cfg, functionalArea: e.target.value })}
-                placeholder="FA_CIBC"
-              />
-            </label>
-            <label className="grd-field-label" style={{ marginTop: "0.5rem" }}>Sites (pipe-semicolon separated)
-              <input
-                className="grd-input"
-                value={cfg.sites}
-                onChange={(e) => persist({ ...cfg, sites: e.target.value })}
-                placeholder="GT - Guatemala - Pradera East"
-              />
-            </label>
+            <div className="grd-section-label">Data Source — {ACCOUNT_CATALOG[accountId as AccountId]?.label ?? accountId}</div>
+            <div style={{ display: "flex", gap: "0.4rem", marginBottom: "0.5rem" }}>
+              <button
+                className={`grd-filter-btn${cfg.source === "gtt_verint" ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, source: "gtt_verint" })}
+              >
+                GTT + Verint
+              </button>
+              <button
+                className={`grd-filter-btn${cfg.source === "verint_only" ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, source: "verint_only" })}
+              >
+                Verint only
+              </button>
+            </div>
+            {cfg.source === "verint_only" ? (
+              <p style={{ fontSize: "0.7rem", color: "#94a3b8" }}>
+                GTT isn't queried for this account — the report is built from Verint capture
+                (attendance/adherence) only, with no GTT cross-reference.
+              </p>
+            ) : (
+              <>
+                {!ACCOUNT_CATALOG[accountId as AccountId]?.confirmed && (
+                  <p style={{ fontSize: "0.7rem", color: "#f59e0b", marginBottom: "0.5rem" }}>
+                    ⚠ This account's GTT functional area/sites aren't confirmed live yet (see
+                    ACCOUNT_ONBOARDING_PLAN.md) — a wrong site string returns HTTP 200 with 0 rows, not an
+                    error, so an empty report here doesn't necessarily mean a clean shift.
+                  </p>
+                )}
+                <label className="grd-field-label">Functional Area
+                  <input
+                    className="grd-input"
+                    value={cfg.functionalArea}
+                    onChange={(e) => persist({ ...cfg, functionalArea: e.target.value })}
+                    placeholder="FA_CIBC"
+                  />
+                </label>
+                <label className="grd-field-label" style={{ marginTop: "0.5rem" }}>Sites (pipe-semicolon separated)
+                  <input
+                    className="grd-input"
+                    value={cfg.sites}
+                    onChange={(e) => persist({ ...cfg, sites: e.target.value })}
+                    placeholder="GT - Guatemala - Pradera East"
+                  />
+                </label>
+              </>
+            )}
           </section>
 
           {/* Visible Columns */}
@@ -183,23 +225,85 @@ export function ReportConfigPanel({ defaults, onClose, onConfigSave }: ReportCon
           {/* Schedule */}
           <section>
             <div className="grd-section-label">Schedule</div>
-            <div style={{ display: "flex", gap: "0.4rem" }}>
-              {(["off", "daily", "weekly"] as const).map((s) => (
-                <button
-                  key={s}
-                  className={`grd-filter-btn${cfg.schedule === s ? " grd-filter-btn--active" : ""}`}
-                  onClick={() => persist({ ...cfg, schedule: s })}
-                  style={{ textTransform: "capitalize" }}
-                >
-                  {s}
-                </button>
-              ))}
+            <div style={{ display: "flex", gap: "0.4rem", flexWrap: "wrap" }}>
+              <button
+                className={`grd-filter-btn${cfg.schedule.mode === "off" ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, schedule: { mode: "off" } })}
+              >
+                Off
+              </button>
+              <button
+                className={`grd-filter-btn${cfg.schedule.mode === "preset" && cfg.schedule.timesPerDay === 3 ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, schedule: { mode: "preset", timesPerDay: 3 } })}
+              >
+                3x per day
+              </button>
+              <button
+                className={`grd-filter-btn${cfg.schedule.mode === "preset" && cfg.schedule.timesPerDay === 5 ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, schedule: { mode: "preset", timesPerDay: 5 } })}
+              >
+                5x per day
+              </button>
+              <button
+                className={`grd-filter-btn${cfg.schedule.mode === "custom" ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, schedule: { mode: "custom", times: cfg.schedule.mode === "custom" ? cfg.schedule.times : ["09:00"] } })}
+              >
+                Custom
+              </button>
             </div>
-            {cfg.schedule !== "off" && (
+            {cfg.schedule.mode === "custom" && (
+              <label className="grd-field-label" style={{ marginTop: "0.5rem" }}>
+                Times (24h, comma-separated)
+                <input
+                  className="grd-input"
+                  defaultValue={cfg.schedule.times.join(", ")}
+                  onBlur={(e) => {
+                    const times = e.target.value
+                      .split(",")
+                      .map((t) => t.trim())
+                      .filter((t) => /^\d{1,2}:\d{2}$/.test(t));
+                    persist({ ...cfg, schedule: { mode: "custom", times: times.length ? times : ["09:00"] } });
+                  }}
+                  placeholder="08:00, 12:00, 16:00, 20:00"
+                />
+              </label>
+            )}
+            {cfg.schedule.mode !== "off" && (
               <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.35rem" }}>
-                Schedule stored locally — cron wiring coming in a future release.
+                A fresh Verint capture runs automatically before each scheduled generation.
               </p>
             )}
+          </section>
+
+          {/* Chat Digest — independent of the report-generation schedule above.
+              Sends a combined Attendance + Adherence summary to Google Chat,
+              either now (button) or automatically every 30 minutes (toggle). */}
+          <section>
+            <div className="grd-section-label">Chat Digest (Attendance + Adherence)</div>
+            <div style={{ display: "flex", gap: "0.4rem", alignItems: "center", flexWrap: "wrap" }}>
+              <button
+                className="grd-btn grd-btn--primary"
+                onClick={onSendChatDigestNow}
+                title="Send the current Attendance + Adherence summary to Google Chat right now"
+              >
+                Send Now
+              </button>
+              <button
+                className={`grd-filter-btn${!cfg.chatDigestEnabled ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, chatDigestEnabled: false })}
+              >
+                Off
+              </button>
+              <button
+                className={`grd-filter-btn${cfg.chatDigestEnabled ? " grd-filter-btn--active" : ""}`}
+                onClick={() => persist({ ...cfg, chatDigestEnabled: true })}
+              >
+                Every 30 min
+              </button>
+            </div>
+            <p style={{ fontSize: "0.7rem", color: "#94a3b8", marginTop: "0.35rem" }}>
+              Uses whatever Attendance report and live Adherence data already exist — doesn't trigger a new capture or generation.
+            </p>
           </section>
 
           {/* Visualisations History */}

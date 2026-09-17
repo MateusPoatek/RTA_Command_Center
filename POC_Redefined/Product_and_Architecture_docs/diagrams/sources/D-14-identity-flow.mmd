@@ -1,0 +1,44 @@
+%% D-14 Identity Flow
+%% Source: docs/engineering/SECURITY_ARCHITECTURE.md; D-10-c4-container.mmd
+%% Purpose: OIDC/Azure authentication, MFA, RBAC, and per-tenant session scoping (P3)
+
+sequenceDiagram
+    actor User as RTA Analyst
+    participant SPA as Command Center SPA
+    participant IdP as Azure / Entra ID (OIDC)
+    participant Gateway as API Gateway
+    participant Core as Rules Core / data
+
+    User->>SPA: Open Command Center
+    SPA->>IdP: Redirect - OIDC authorization-code request
+
+    IdP->>User: Prompt for credentials
+    User->>IdP: Submit credentials
+    IdP->>User: MFA challenge (step-up for high-risk actions)
+    User->>IdP: MFA response
+
+    alt MFA fails
+        IdP-->>SPA: Auth error
+        SPA-->>User: Access denied
+    else MFA succeeds
+        IdP->>SPA: Authorization code
+        SPA->>IdP: Exchange code for tokens (PKCE)
+        IdP->>SPA: ID token + access token (claims: sub, roles, tenant_id)
+        SPA->>SPA: Store token (session), no OIDC secret in browser
+
+        SPA->>Gateway: API request + Bearer access token
+
+        Gateway->>Gateway: Validate token (signature, expiry, issuer = Entra)
+        Gateway->>Gateway: Check RBAC (role claim vs required permission)
+        Gateway->>Gateway: Scope session to tenant_id claim (P3 - one tenant's data only)
+
+        alt Token invalid or role lacks permission
+            Gateway-->>SPA: 401 / 403
+            SPA-->>User: Access denied
+        else Token valid and RBAC passes
+            Gateway->>Core: Forward request (tenant_id-scoped)
+            Core-->>Gateway: Tenant-scoped data / CommandCard[]
+            Gateway-->>SPA: Response
+            SPA-->>User: Render cards (this tenant only)
+        end
+    end

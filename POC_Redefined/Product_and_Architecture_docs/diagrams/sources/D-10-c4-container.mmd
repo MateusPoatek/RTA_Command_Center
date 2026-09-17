@@ -1,0 +1,70 @@
+%% D-10 C4 Container
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md §2-3;
+%%         recast from docs/engineering/diagrams/mmd/01-system-architecture-cloud-neutral.mmd (flowchart -> C4)
+%% Purpose: zoom into the single WFM Automation Platform system box from D-09 — capture adapters,
+%%          adapter-blind rules core, Command Center UI, read-only LLM subsystem (P1), human-gated
+%%          dispatch (P5), and the five cloud-neutral seams (P4)
+
+C4Container
+
+Person(rta, "RTA Analyst", "Reviews and approves CommandCards (HITL)")
+
+System_Ext(verint, "Verint", "Schedule + adherence system of record")
+System_Ext(gtt, "GTT", "Attendance/time-tracking (planned)")
+System_Ext(snow, "ServiceNow", "Incident ticketing")
+System_Ext(chat, "Google Chat / Teams", "Chat delivery channels")
+
+System_Boundary(platform, "WFM Automation Platform  (single OCI image, config-driven per tenant)") {
+
+    Container(capture, "Capture Adapters", "Browser Ext / Verint REST / Vision-OCR / netcap / File Export", "One selected per environment; emits normalized AgentRow[] — swappable, never changes the core")
+
+    Container(gateway, "API Gateway", "OIDC · MFA · RBAC · rate-limit", "Single ingress; validates every request against the contract")
+
+    Container(core, "Rules Core Service", "normalize -> triage -> card_builder", "Adapter-blind, 44 tests, never changes per capture/dispatch adapter (P2) — see D-11 for component detail")
+
+    Container(llm, "LLM Subsystem", "Backend proxy", "Advise/draft only — holds NO write credential to any external system (P1)")
+
+    Container(push, "Push Service", "WSS / SSE", "Streams CardEvents to subscribed Command Center SPAs")
+
+    Container(spa, "Command Center SPA", "React", "HITL review surface: cards, copilot, dispatch feed, learning strip")
+
+    Container(dispatch, "Dispatch Service", "Swappable dispatch workers", "Delivers only human-approved CommandCards — every card stays pending_review until an RTA acts (P5)")
+
+    Container(control, "Control Plane", "", "Tenant manifest, connector registry, preflight; configures capture + dispatch")
+
+    ContainerDb(vault, "Secret Vault", "cloud-neutral seam", "All credentials — Verint account, webhooks, LLM key, OIDC secret (P4)")
+    ContainerDb(opstore, "Operational + Audit Store", "cloud-neutral seam", "Live cards, dispatch log, append-only/WORM audit trail (P4)")
+    ContainerDb(intel, "Intelligence Store", "cloud-neutral seam", "Per-tenant derived analytics (P4)")
+    Container(llmendpoint, "LLM Endpoint", "cloud-neutral seam", "Hosted model reached via backend proxy — advise/draft only (P4)")
+    Container(runtime, "Runtime + Gateway", "cloud-neutral seam", "Where the image runs; ingress fronting (P4)")
+}
+
+Rel(capture, verint, "Reads schedule/adherence (read-only)")
+Rel(capture, gtt, "Reads attendance data (planned)")
+Rel(capture, gateway, "Submits AgentRow[]")
+Rel(gateway, core, "Forwards validated AgentRow[]")
+Rel(core, push, "CommandCard[] + draft message")
+Rel(core, dispatch, "CommandCard[] + draft message")
+Rel(core, llm, "Requests draft copy / advisory reasoning")
+Rel(llm, llmendpoint, "Prompt/response only — no write credential (P1)")
+Rel(push, spa, "Streams CardEvents")
+Rel(rta, spa, "Reviews cards")
+Rel(spa, gateway, "approve (human)")
+Rel(dispatch, snow, "Creates incidents (after human approval)")
+Rel(dispatch, chat, "Delivers approved alerts")
+Rel(dispatch, verint, "Executes approved writes via deterministic RPA only (P5)")
+Rel(control, capture, "configures (tenant manifest)")
+Rel(control, dispatch, "configures (tenant manifest)")
+
+Rel(gateway, vault, "reads credentials")
+Rel(dispatch, vault, "reads webhook/RPA credentials")
+Rel(core, opstore, "writes cards + audit events")
+Rel(dispatch, opstore, "writes dispatch outcome (append-only)")
+Rel(core, intel, "writes derived analytics")
+Rel(control, runtime, "binds into (deploy-time)")
+
+%% Note: the five cloud-neutral seams (P4) are modeled as Container/ContainerDb
+%% nodes inside the platform boundary — they are the only cloud-bound interfaces,
+%% not separate systems — matching SYSTEM_ARCHITECTURE.md §3's "binds" relationship.
+%% Note: "Rules Core Service" is kept as one Container here (matching D-09's single
+%% system, one level up); D-11 zooms into it as three components + the HITL gate.

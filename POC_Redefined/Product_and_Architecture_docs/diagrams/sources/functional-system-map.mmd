@@ -1,0 +1,66 @@
+%% Functional System Map — Extension + Command Center as one product
+%% Source: Volume-2_Product-Architecture/COMMAND_CENTER_FUNCTIONAL_FLOWS.md
+%% Purpose: show the shared spine (capture -> core -> SPA) with the four business flows
+%%          (Shift Open/Close, Attendance Report, Alert Dispatch, Adherence Report)
+%%          branching off it — for a team walkthrough, not a formal C4 view.
+
+flowchart LR
+
+    subgraph SENSE["SEE THE FLOOR"]
+        direction TB
+        Ext["Browser Extension<br/><i>reads Verint grid, no API needed</i>"]
+    end
+
+    subgraph SPINE["SHARED SPINE — built once, reused by every flow"]
+        direction TB
+        GW["API Gateway<br/><i>auth · validate</i>"]
+        Core["Rules Core<br/>normalize -> triage -> card_builder<br/><i>same logic, every flow</i>"]
+        Store[("Operational + Audit Store<br/><i>append-only system of record</i>")]
+        Intel[("Intelligence Store<br/><i>trend / aggregate data</i>")]
+        GW --> Core --> Store --> Intel
+    end
+
+    subgraph ACT["ACT ON IT"]
+        direction TB
+        SPA["Command Center SPA<br/><i>the RTA's screen — live feed,<br/>reports, shift controls</i>"]
+    end
+
+    Ext -->|"AgentRow[]"| GW
+    Intel --> SPA
+    Store --> SPA
+
+    %% ── Flow 1: Shift Open/Close ──────────────────────────────
+    SPA -->|"1 · open/close shift"| GW
+    Core -->|"sets shift window"| F1["Shift window<br/><i>bounds every other flow's data</i>"]
+
+    %% ── Flow 2: Attendance Report ─────────────────────────────
+    Intel -->|"2 · Attendance Report"| F2["Present / absent / late<br/>per shift window"]
+    F2 --> SPA
+
+    %% ── Flow 3: Alert Dispatch (has a human gate) ─────────────
+    Core -->|"3 · Alert Dispatch"| LLM["LLM Advisor<br/><i>drafts copy only, P1</i>"]
+    LLM --> Card["CommandCard<br/>pending_review"]
+    Card --> SPA
+    SPA -->|"RTA approves (P5)"| Dispatch["Dispatch Workers"]
+    Dispatch --> Chat["Chat / Teams"]
+    Dispatch --> SNOW["ServiceNow"]
+
+    %% ── Flow 4: Adherence Report ───────────────────────────────
+    Intel -->|"4 · Adherence Report"| F4["Adherence trend<br/>across many shifts, per LOB"]
+    F4 --> SPA
+
+    classDef spine fill:#111827,stroke:#6366f1,stroke-width:2px,color:#e5e7eb
+    classDef sense fill:#0c1f14,stroke:#22c55e,stroke-width:2px,color:#e5e7eb
+    classDef act fill:#241432,stroke:#c084fc,stroke-width:2px,color:#e5e7eb
+    classDef flow1 fill:#1e293b,stroke:#94a3b8,color:#e5e7eb
+    classDef flow2 fill:#0e2a1f,stroke:#34d399,color:#e5e7eb
+    classDef flow3 fill:#3d1f0e,stroke:#fb923c,color:#e5e7eb
+    classDef flow4 fill:#2a1030,stroke:#e879f9,color:#e5e7eb
+
+    class Ext sense
+    class GW,Core,Store,Intel spine
+    class SPA act
+    class F1 flow1
+    class F2 flow2
+    class LLM,Card,Dispatch,Chat,SNOW flow3
+    class F4 flow4

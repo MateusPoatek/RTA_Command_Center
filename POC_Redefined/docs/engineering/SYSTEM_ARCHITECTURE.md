@@ -140,7 +140,7 @@ flowchart TB
         Chat["Google Chat\nper-LOB"]
         Teams["Microsoft Teams"]
         SNOW["ServiceNow\nREST"]
-        RPA["RPA Engine\n(only write channel into Verint/CIBC)"]
+        RPA["RPA Engine\n(only write channel into Verint)"]
         Audit["Audit-only"]
     end
 
@@ -208,13 +208,13 @@ A single image serves every client. Two independent axes decide *how* — both c
 **Access tier** — how much access we have to the client's WFM system (the primary client-segmentation axis, per the platform strategy):
 - **`full`** — we own/administer the tech or have full API access (e.g. Google). Capture server-side via REST; richest, lowest-friction.
 - **`partial`** — web-accessible but without a full API (e.g. EPIC's web Verint). Capture via the browser extension / netcap plus whatever API exists.
-- **`none`** — pixel-only through Citrix/VDI, no API, no local DOM (e.g. CIBC). Capture via an in-VDI vision/OCR agent — or pursue a read-only API credential, which *upgrades the tier* and collapses the hard case (see [CONNECTOR_CATALOG.md](./CONNECTOR_CATALOG.md)).
+- **`none`** — pixel-only through Citrix/VDI, no API, no local DOM (e.g. a bank-tier client). Capture via an in-VDI vision/OCR agent — or pursue a read-only API credential, which *upgrades the tier* and collapses the hard case (see [CONNECTOR_CATALOG.md](./CONNECTOR_CATALOG.md)).
 
 **Deployment topology** — where the stack runs (a separate axis, correlated with but not identical to access tier):
 - **in-client-cloud** — the whole stack deploys *into the client's own cloud/VPC*, single-tenant, behind their identity and network controls; the vendor retains nothing in the runtime data path. Required for restricted/regulated clients (e.g. a bank).
 - **vendor-hosted** — runs on vendor infrastructure, isolated per tenant. For permissive clients.
 
-The axes combine: CIBC = `none`-access + in-client-cloud; a `full`-access web shop can be vendor-hosted. The manifest carries both (`accessTier` + `deployment`) and self-configures the identical image: which capture adapters to instantiate (and in what fallback order), which dispatch adapters, the LOB→channel map, rule thresholds, and the seam bindings. "One codebase, many clients" — no per-client forks.
+The axes combine: a bank-tier client = `none`-access + in-client-cloud; a `full`-access web shop can be vendor-hosted. The manifest carries both (`accessTier` + `deployment`) and self-configures the identical image: which capture adapters to instantiate (and in what fallback order), which dispatch adapters, the LOB→channel map, rule thresholds, and the seam bindings. "One codebase, many clients" — no per-client forks.
 
 ## 5. Production component model
 
@@ -256,7 +256,7 @@ Background: [../VERINT_MCP_AND_RPA_NOTE.md](../VERINT_MCP_AND_RPA_NOTE.md) (brai
 
 Capture is the riskiest domain (it depends on an upstream we don't own). The system degrades along a **per-environment fallback chain** rather than failing hard:
 
-- **`none`-access / Citrix (CIBC):** Verint REST (primary, once a read-only credential is granted) → Vision/OCR in-VDI (fallback) → file export (emergency).
+- **`none`-access / Citrix (bank-tier client):** Verint REST (primary, once a read-only credential is granted) → Vision/OCR in-VDI (fallback) → file export (emergency).
 - **`full`/`partial`-access / web (EPIC):** browser extension (primary) → netcap (alternative) → REST (if credentialed).
 
 When a row cannot be normalized, the core emits an **exception card** (`type: "exception"`, `confidence: 0.0`, `targetChannels: ["audit-only"]`) routed to HITL review — a real, unparseable input never silently vanishes. Full fail-prevention model: [CONNECTOR_CATALOG.md](./CONNECTOR_CATALOG.md).

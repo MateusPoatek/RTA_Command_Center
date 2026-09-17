@@ -20,6 +20,8 @@
  */
 
 import * as XLSX from "xlsx";
+import jsPDF from "jspdf";
+import html2canvas from "html2canvas";
 import type { AuditEvent, CommandCard, ReconciliationReport } from "../domain/types";
 
 // ---------------------------------------------------------------------------
@@ -102,15 +104,22 @@ export function exportShiftSummary(cards: CommandCard[]): void {
  */
 export function exportReportXlsx(report: ReconciliationReport): void {
   const wb = XLSX.utils.book_new();
+  const verintOnly = report.source === "verint_only";
 
-  // Sheet 1: discrepancies
+  // Sheet 1: discrepancies. Column widths keyed by header name (not
+  // positional) so verint_only can omit the GTT-only columns without the
+  // widths array drifting out of sync.
+  const COL_WIDTHS: Record<string, number> = {
+    "Employee": 20, "Workday ID": 14, "Subgroup (GTT)": 18, "LOB (Verint)": 18,
+    "GTT Events": 24, "# GTT Events": 12, "Verint Status": 20, "Adherence %": 12,
+    "Adherence Minutes": 16, "OOA (sec)": 10, "OOA Minutes (Total)": 18,
+    "Productive Minutes": 16, "Scheduled Minutes": 16, "Discrepancy Type": 32,
+  };
   const discRows = report.discrepancies.map((d) => ({
     "Employee": d.employee,
-    "Workday ID": d.workday_id,
-    "Subgroup (GTT)": d.subgroup,
+    ...(verintOnly ? {} : { "Workday ID": d.workday_id, "Subgroup (GTT)": d.subgroup }),
     "LOB (Verint)": d.lob,
-    "GTT Events": d.gtt_event,
-    "# GTT Events": d.gtt_event_count,
+    ...(verintOnly ? {} : { "GTT Events": d.gtt_event, "# GTT Events": d.gtt_event_count }),
     "Verint Status": d.verint_status,
     "Adherence %": d.adherence_pct ?? "",
     "Adherence Minutes": d.adherence_minutes ?? "",
@@ -121,16 +130,16 @@ export function exportReportXlsx(report: ReconciliationReport): void {
     "Discrepancy Type": d.discrepancy_type,
   }));
   const ws1 = XLSX.utils.json_to_sheet(discRows);
-  ws1["!cols"] = [20, 14, 18, 18, 24, 12, 20, 12, 16, 10, 18, 16, 16, 32].map((w) => ({ wch: w }));
+  ws1["!cols"] = Object.keys(discRows[0] ?? COL_WIDTHS).map((k) => ({ wch: COL_WIDTHS[k] ?? 16 }));
   XLSX.utils.book_append_sheet(wb, ws1, "Discrepancies");
 
   // Sheet 2: intelligence bullets + summary
   const summaryRows = [
     { Field: "Date", Value: report.date },
-    { Field: "Functional Area", Value: report.functional_area },
-    { Field: "GTT Total", Value: report.gtt_total },
+    ...(verintOnly ? [] : [{ Field: "Functional Area", Value: report.functional_area }]),
+    ...(verintOnly ? [] : [{ Field: "GTT Total", Value: report.gtt_total }]),
     { Field: "Verint Total", Value: report.verint_total },
-    { Field: "Matched", Value: report.matched },
+    ...(verintOnly ? [] : [{ Field: "Matched", Value: report.matched }]),
     { Field: "Discrepancies", Value: report.discrepancy_count },
     { Field: "Generated At", Value: report.generated_at },
     { Field: "", Value: "" },
@@ -192,6 +201,51 @@ export function exportReportPdf(elementId: string): void {
     printWindow.print();
     printWindow.close();
   }, 400);
+}
+
+// ---------------------------------------------------------------------------
+// Shift Report PDF export — a REAL file, not the print-dialog hack above
+// ---------------------------------------------------------------------------
+
+/**
+ * Rasterizes the rendered ShiftReportPrintView DOM node (live, correctly
+ * sized — including its Recharts SVGs) into a real multi-page PDF and
+ * triggers a browser download.
+ *
+ * Unlike exportReportPdf() above (which only opens the browser's native
+ * print dialog on a cloned subtree), this produces actual PDF bytes — the
+ * prerequisite for any future automated delivery (email attachment, Chat
+ * upload) once a delivery mechanism is decided.
+ *
+ * @param elementId - id of the rendered ShiftReportPrintView container.
+ * @param fileName  - name for the downloaded file (without extension).
+ */
+export async function exportShiftReportPdf(elementId: string, fileName: string): Promise<void> {
+  const el = document.getElementById(elementId);
+  if (!el) return;
+
+  const canvas = await html2canvas(el, { scale: 2, backgroundColor: "#ffffff" });
+  const imgData = canvas.toDataURL("image/png");
+
+  const pdf = new jsPDF({ orientation: "portrait", unit: "pt", format: "a4" });
+  const pageWidth = pdf.internal.pageSize.getWidth();
+  const pageHeight = pdf.internal.pageSize.getHeight();
+  const imgWidth = pageWidth;
+  const imgHeight = (canvas.height * imgWidth) / canvas.width;
+
+  let heightLeft = imgHeight;
+  let position = 0;
+  pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+  heightLeft -= pageHeight;
+
+  while (heightLeft > 0) {
+    position = heightLeft - imgHeight; // negative offset — draws the next visible slice
+    pdf.addPage();
+    pdf.addImage(imgData, "PNG", 0, position, imgWidth, imgHeight);
+    heightLeft -= pageHeight;
+  }
+
+  pdf.save(`${fileName}.pdf`);
 }
 
 // ---------------------------------------------------------------------------

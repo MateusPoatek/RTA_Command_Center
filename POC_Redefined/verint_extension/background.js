@@ -15,6 +15,14 @@
 //      interaction-driven — calendar-filter only fires when the RTA pages).
 importScripts("parse.js");
 
+// Each entry is { lob, data } — tagged with whichever LOB was ACTIVE AT THE
+// MOMENT it was captured (not relabeled later). This is the real account
+// boundary: Verint's own calendar/work-resource views are scoped to whatever
+// LOB you paged to when you captured them, so the LOB a row belongs to is a
+// property of the capture, not something a later `set-lob` can safely
+// rewrite. rebuild() below filters to the CURRENT activeLob's own tagged
+// entries — switching LOB switches to that LOB's own previously-captured
+// data (if any), never someone else's relabeled as yours.
 const captures = { calendarFilters: [], workResources: [] }; // transient (raw bodies, PII) — NOT persisted
 let latestCards = [];
 let latestRoster = [];            // all agents in Verint fixture format (for reconciliation)
@@ -147,7 +155,11 @@ function pushToCommandCenter() {
 }
 
 function rebuild() {
-  const captureData = { calendarFilters: captures.calendarFilters, workResources: captures.workResources };
+  // Only this LOB's own tagged captures — never another LOB's relabeled.
+  const captureData = {
+    calendarFilters: captures.calendarFilters.filter((e) => e.lob === activeLob).map((e) => e.data),
+    workResources: captures.workResources.filter((e) => e.lob === activeLob).map((e) => e.data),
+  };
   try {
     latestCards = self.RTAParse.buildCards(captureData, { lob: activeLob, target: Infinity }); // uncapped
   } catch (e) {
@@ -184,8 +196,8 @@ function handleMessage(msg, sendResponse) {
     if (kind) {
       try {
         const obj = JSON.parse(msg.body);
-        if (kind === "cf") captures.calendarFilters.push(obj);
-        else if (kind === "wr") captures.workResources.push(obj);
+        if (kind === "cf") captures.calendarFilters.push({ lob: activeLob, data: obj });
+        else if (kind === "wr") captures.workResources.push({ lob: activeLob, data: obj });
         rebuild(); // persists
       } catch (_) {}
     }
@@ -193,7 +205,9 @@ function handleMessage(msg, sendResponse) {
     sendResponse({
       cards: latestCards,
       roster: latestRoster,
-      captured: captures.calendarFilters.length,
+      // Current LOB's own capture count, not the total across every LOB
+      // ever captured this session.
+      captured: captures.calendarFilters.filter((e) => e.lob === activeLob).length,
       lastSyncedAt: lastSyncedAt,
       captureLog: captureLog,
       autoPush: autoPush,

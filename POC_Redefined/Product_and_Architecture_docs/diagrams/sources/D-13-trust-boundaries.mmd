@@ -1,0 +1,104 @@
+%% D-13 Trust Boundaries
+%% Source: docs/diagrams/sources/verint-extension-dataflow.mmd (extended); docs/engineering/SECURITY_ARCHITECTURE.md
+%% Purpose: end-to-end trust zones and what is enforced at each boundary crossing
+
+flowchart TB
+
+subgraph browserZone ["Trust Boundary — RTA Browser (Chromium, analyst-controlled endpoint)"]
+  subgraph verintTab ["Verint Tab (wfo.a87.verintcloudservices.com)"]
+    verintApp["Verint WFM SPA"]
+    injectJS["inject.js<br/>(MAIN world)<br/>Passive API interceptor"]
+    contentVerint["content_verint.js<br/>(ISOLATED world)<br/>Message relay"]
+  end
+  subgraph extensionRuntime ["Chrome Extension Runtime — untrusted client code"]
+    bgWorker["background.js<br/>Service Worker<br/>Data accumulator + card builder"]
+    parseJS["parse.js<br/>CommandCard builder"]
+    captureLog["captureLog<br/>(metadata only — no PII)"]
+  end
+  subgraph commandCenterTab ["Command Center Tab (SPA origin)"]
+    contentCC["content_cc.js<br/>(ISOLATED world)<br/>Message bridge"]
+    reactApp["React App<br/>Command Center SPA<br/>HITL review surface"]
+  end
+end
+
+subgraph gatewayZone ["Trust Boundary — API Gateway (single ingress seam, P4)"]
+  gateway["API Gateway<br/>OIDC token validation + introspection<br/>MFA/step-up · RBAC · rate-limit<br/>request validated against API contract"]
+end
+
+subgraph cloudZone ["Trust Boundary — Cloud Runtime (Telus GCP, tenant-isolated)"]
+  core["Rules Core Service<br/>normalize -> triage -> card_builder<br/>adapter-blind (P2)"]
+
+  subgraph llmZone ["LLM Subsystem — READ-ONLY, no write credential (P1)"]
+    llm["LLM Subsystem<br/>Backend proxy<br/>advise/draft only"]
+    llmendpoint["LLM Endpoint<br/>Prompt/response only"]
+  end
+
+  dispatch["Dispatch Service<br/>delivers only human-approved CommandCards<br/>every card pending_review until RTA acts (P5)"]
+  opstore[("Operational + Audit Store<br/>append-only/WORM audit trail")]
+  vault[("Secret Vault<br/>Verint credential, webhook URLs,<br/>LLM key, OIDC secret — fetched by reference")]
+end
+
+subgraph externalZone ["Trust Boundary — External Systems (vendor/client-owned)"]
+  verintAPI["Verint WFM REST API<br/>read-only credential, GET-only by construction"]
+  gtt["GTT<br/>attendance/time-tracking"]
+  snow["ServiceNow<br/>incident ticketing"]
+  chat["Google Chat / Teams<br/>alert delivery"]
+end
+
+%% Verint SPA fetches its own data normally
+verintApp -->|"Normal HTTPS fetch"| verintAPI
+verintAPI -->|"JSON response"| verintApp
+
+%% inject.js tees the response (read-only, non-blocking)
+verintApp -.->|"fetch() monkey-patch<br/>(read-only tee)"| injectJS
+injectJS -->|"window.postMessage<br/>(same-origin)"| contentVerint
+contentVerint -->|"chrome.runtime.sendMessage"| bgWorker
+bgWorker --> parseJS
+parseJS -->|"CommandCards[]"| bgWorker
+bgWorker --> captureLog
+bgWorker -->|"chrome.tabs.sendMessage"| contentCC
+contentCC -->|"window.dispatchEvent"| reactApp
+
+%% Crossing 1: Browser -> API Gateway — OIDC bearer token minted at SPA login; gateway validates + introspects
+reactApp ==>|"BOUNDARY CROSSING 1<br/>OIDC bearer token + MFA/step-up<br/>validated against API contract"| gateway
+
+%% Crossing 2: API Gateway -> Cloud Runtime core — only validated, contract-shaped requests pass
+gateway ==>|"BOUNDARY CROSSING 2<br/>forwards validated AgentRow[]<br/>mTLS to internal services"| core
+
+core -->|"requests draft copy / advisory reasoning"| llm
+llm -->|"prompt/response only — NO write credential"| llmendpoint
+core -->|"CommandCard[] + draft message"| dispatch
+core -->|"writes cards + audit events"| opstore
+dispatch -->|"writes dispatch outcome (append-only)"| opstore
+
+%% Crossing 3: Cloud Runtime -> Secret Vault — managed identity, credentials never leave vault as values
+gateway -.->|"BOUNDARY CROSSING 3a<br/>reads credentials via managed identity"| vault
+dispatch -.->|"BOUNDARY CROSSING 3b<br/>reads webhook/RPA credentials"| vault
+
+%% Crossing 4: Dispatch -> External Systems — only after human approval (P5)
+dispatch ==>|"BOUNDARY CROSSING 4<br/>ONLY after human approval (P5)<br/>deterministic RPA/API write, never AI-initiated"| verintAPI
+dispatch ==>|"BOUNDARY CROSSING 4<br/>after human approval (P5)"| snow
+dispatch ==>|"BOUNDARY CROSSING 4<br/>after human approval (P5)"| chat
+core -.->|"reads attendance (planned)"| gtt
+
+subgraph legend ["Legend"]
+  l1["Solid arrow = Live/normal data flow"]
+  l2["Dashed arrow = Reference read / planned path"]
+  l3["Thick arrow (==>) = Trust boundary crossing — authenticated + validated"]
+end
+
+classDef automated fill:#4B286D,stroke:#3A1F54,color:#FFFFFF
+classDef aiNode fill:#E3F6D1,stroke:#1F5C09,color:#1F5C09
+classDef readonlyNode fill:#FFF4CE,stroke:#8A6D00,color:#5C4A00
+classDef humanNode fill:#EFEDFF,stroke:#7C53A5,color:#3F2A54
+classDef auditNode fill:#EFEDFF,stroke:#3F2A54,color:#2C2C2C
+classDef externalNode fill:#E8E8E8,stroke:#666666,color:#2C2C2C
+classDef gatewayNode fill:#D6E4FF,stroke:#1F3C88,color:#1F3C88
+
+class injectJS,contentVerint,bgWorker,parseJS automated
+class reactApp,contentCC aiNode
+class llm,llmendpoint readonlyNode
+class gateway gatewayNode
+class dispatch humanNode
+class captureLog,opstore auditNode
+class verintAPI,gtt,snow,chat,vault externalNode

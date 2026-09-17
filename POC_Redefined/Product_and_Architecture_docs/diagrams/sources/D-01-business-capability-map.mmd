@@ -1,0 +1,64 @@
+%% D-01 Business Capability Map
+%% Source: POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md
+%% Purpose: what capabilities the platform provides (business view, audience: everyone)
+
+flowchart TB
+
+    subgraph CAPTURE ["Capture & Ingest"]
+        direction TB
+        C1["Read agent status from any Verint access mode<br/>(web, REST, Citrix/VDI, file export)"]
+        C2["Normalize every source into one common agent snapshot"]
+        C3["Fall back gracefully when a capture path is degraded or unavailable"]
+    end
+
+    subgraph RECON ["Reconciliation & Triage"]
+        direction TB
+        R1["Detect out-of-adherence and exception conditions"]
+        R2["Apply consistent rules regardless of capture source"]
+        R3["Classify severity and confidence per case"]
+        R4["Surface unparseable input as a reviewable exception (never silently dropped)"]
+    end
+
+    subgraph DECISION ["Decision Support"]
+        direction TB
+        DS1["Draft a recommended message / action per case"]
+        DS2["Attach evidence and rule provenance to every recommendation"]
+        DS3["Advise only — never write directly to an external system"]
+    end
+
+    subgraph REVIEW ["Human Review & Dispatch"]
+        direction TB
+        HR1["Present cases to the RTA for approve / edit / suppress / escalate"]
+        HR2["Deliver approved actions to chat, ticketing, or automation channels"]
+        HR3["Route each case to the right team by line-of-business"]
+    end
+
+    subgraph CONFIG ["Configuration & Multi-Tenancy"]
+        direction TB
+        CF1["Onboard a client with a manifest, not a code change"]
+        CF2["Choose capture and dispatch channels per client environment"]
+        CF3["Isolate each client's data and settings from every other client"]
+    end
+
+    subgraph OBSERVE ["Observability & Audit"]
+        direction TB
+        OB1["Record an append-only, tamper-evident trail of every decision and action"]
+        OB2["Prove no automated action was ever taken by the AI"]
+        OB3["Monitor system and connector health"]
+    end
+
+    subgraph INTEL ["Intelligence & Learning"]
+        direction TB
+        IN1["Track adherence and attendance trends per client"]
+        IN2["Learn from human decisions to improve future recommendations"]
+    end
+
+    CAPTURE --> RECON --> DECISION --> REVIEW
+    CONFIG -. "governs" .-> CAPTURE
+    CONFIG -. "governs" .-> REVIEW
+    REVIEW -. "feeds" .-> OBSERVE
+    REVIEW -. "feeds" .-> INTEL
+    OBSERVE -. "informs" .-> INTEL
+
+    classDef tile fill:#f8fafc,stroke:#94a3b8,color:#1e293b
+    class C1,C2,C3,R1,R2,R3,R4,DS1,DS2,DS3,HR1,HR2,HR3,CF1,CF2,CF3,OB1,OB2,OB3,IN1,IN2 tile

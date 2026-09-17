@@ -1,0 +1,98 @@
+%% D-16 Hosting Model
+%% Source: ../docs/diagrams/sources/command-center-infrastructure.mmd
+%% Purpose: where the platform deploys — Telus Digital GCP first target (P4)
+
+flowchart TB
+
+%% RTA Command Center — Infrastructure Diagram
+%% Grounds the architecture in the concrete Telus Digital GCP hosting decision (2026-07-06).
+%% Cost anchors are annotated so the diagram survives the "where are the costs" review.
+
+subgraph wfmNetwork ["WFM Network (source systems)"]
+  verintTenant["Verint WFM tenant\nwfo.a87.verintcloudservices.com\ncalendar-filter API"]
+  gttApi["GTT ATOS Report API\n(GCP-hosted, SA identity token)"]
+  niceIex["NICE IEX\n(expansion — 2nd WFM vendor)"]
+end
+
+subgraph legacyGcp ["Telus International GCP — DECOMMISSIONING (migrate off)"]
+  legacyProjects["Legacy WFM/RPA projects\n→ migrate to Telus Digital GCP\nunder Cloud COE (tighter security)"]
+end
+
+subgraph telusDigital ["Telus Digital GCP — target project (non-prod, IaC / Terraform)"]
+
+  subgraph runtimeTier ["Compute / Runtime"]
+    cloudRun["Cloud Run\ncapture + reconciliation services"]
+    cloudScheduler["Cloud Scheduler\nper-tenant report cron"]
+    cloudTasks["Cloud Tasks\ndispatch queue (retry/idempotency)"]
+  end
+
+  subgraph messagingTier ["Messaging"]
+    pubsub["Pub/Sub\nevent fan-out"]
+  end
+
+  subgraph dataTier ["Data / State"]
+    cloudSql["Cloud SQL (PostgreSQL)\noperational + config state"]
+    firestore["Firestore\nimmutable audit (WORM, hash-chained)"]
+    cloudStorage["Cloud Storage\nreport / artefact store (≥90d)"]
+    secretManager["Secret Manager\nVerint token, GTT SA key, webhook URLs"]
+  end
+
+end
+
+subgraph existingPlatform ["Existing Telus platform (reuse)"]
+  aaControlRoom["RPA Engine\norchestrator · ~18 VMs · ~125 bots"]
+  intelligentInsights["Intelligent Insights\nobservability + audit spine\nSOC 2 Type II · PostgreSQL"]
+end
+
+subgraph dispatch ["Dispatch / Consumers"]
+  chatSheets["Google Chat / Sheets webhooks\n(existing — reuse)"]
+  commandCenterUi["Command Center UI\nRTA Floor View + HITL gate"]
+end
+
+%% Connectivity — the gating unknown
+verintTenant -->|"read (extension relay / REST)"| cloudRun
+gttApi -->|"SA identity token"| cloudRun
+niceIex -.->|"capture adapter (expansion)"| cloudRun
+wfmNetwork -.->|"⚠ GATING UNKNOWN:\nWFM-network connectivity\nmust be confirmed (AD-009, R-11)"| telusDigital
+
+%% Migration
+legacyProjects -.->|"IaC migration"| telusDigital
+
+%% Internal wiring
+cloudScheduler --> cloudRun
+cloudRun --> pubsub
+pubsub --> cloudTasks
+cloudRun --> cloudSql
+cloudRun --> firestore
+cloudRun --> cloudStorage
+cloudRun --> secretManager
+cloudTasks -->|"HITL-gated"| chatSheets
+cloudRun --> commandCenterUi
+
+%% Reuse of existing spine
+aaControlRoom -.->|"orchestrates"| cloudRun
+firestore -.->|"logs / metrics / exceptions"| intelligentInsights
+cloudRun -.->|"telemetry"| intelligentInsights
+
+subgraph costAnchor ["Cost anchors (2026-07-06 review)"]
+  c1["Incumbent RPA bot: ~$12–13K / bot / yr"]
+  c2["Shared-services: ~$3 CAD / VM-hr + ~$15–16K / yr / bot (L1–L3)"]
+  c3["New GCP project budget: $500 initial (adjustable)"]
+  c4["Reuse existing spine → avoid duplicating run-cost (BO-07)"]
+end
+
+classDef gcpNode fill:#4B286D,stroke:#3A1F54,color:#FFFFFF
+classDef dataNode fill:#2E75B6,stroke:#1F4E79,color:#FFFFFF
+classDef sourceNode fill:#E8E8E8,stroke:#666666,color:#2C2C2C
+classDef reuseNode fill:#CFE2FF,stroke:#0A58CA,color:#08306B
+classDef futureNode fill:#FFF3CD,stroke:#997404,color:#664D03
+classDef warnNode fill:#F8CBAD,stroke:#C0504D,color:#5A1A16
+classDef costNode fill:#E2EFDA,stroke:#548235,color:#274E13
+
+class cloudRun,cloudScheduler,cloudTasks,pubsub gcpNode
+class cloudSql,firestore,cloudStorage,secretManager dataNode
+class verintTenant,gttApi sourceNode
+class aaControlRoom,intelligentInsights,chatSheets reuseNode
+class niceIex futureNode
+class legacyProjects,commandCenterUi sourceNode
+class c1,c2,c3,c4 costNode

@@ -1,0 +1,88 @@
+%% D-12 Sequences (attendance capture -> alert -> HITL approve -> dispatch)
+%% Source: SYSTEM_ARCHITECTURE.md §2, §6, §7 · D-10-c4-container.mmd · folds in 06-multisource-confirmation.mmd
+%% Purpose: master end-to-end sequence — capture, adapter-blind normalize/triage/build (P2), LLM drafts copy only (P1), card sits pending_review until RTA approves (P5), then dispatch
+
+sequenceDiagram
+    participant Verint as Verint (system of record)
+    participant Ext as Browser Extension (RTA Live Bridge)
+    participant Gateway as API Gateway
+    participant Core as Rules Core (normalize -> triage -> card_builder)
+    participant LLM as LLM Subsystem (advise/draft only)
+    participant OpStore as Operational + Audit Store (append-only)
+    participant Push as Push Service
+    participant SPA as Command Center SPA
+    actor RTA as RTA Analyst
+    participant Dispatch as Dispatch Service
+    participant SNOW as ServiceNow
+    participant Chat as Google Chat / Teams
+
+    %% ── 1. Capture ────────────────────────────────────────────────
+    rect rgb(238, 242, 255)
+        note over Ext,Verint: Capture (swappable adapter — extension shown, REST/Vision/netcap/File Export equivalent)
+        Ext->>Verint: Read grid (read-only DOM relay)
+        Verint-->>Ext: Agent statuses + Verint's own OOA verdict + native NOTIFICATIONS
+        Ext->>Gateway: POST AgentRow[] (raw capture)
+        Gateway->>Gateway: Validate against AgentRow contract
+    end
+
+    %% ── 2. Normalize / triage (adapter-blind, multi-source confirmation) ──
+    rect rgb(254, 252, 232)
+        note over Gateway,Core: Stable rules core — adapter-blind (P2), same path regardless of capture source
+        Gateway->>Core: Forward validated AgentRow[]
+        Core->>Core: verint_normalize -> normalized AgentRow[]
+        Core->>Core: verint_triage (consumes Verint's own OOA verdict)
+
+        note over Core: Multi-source confirmation — sources checked for agreement
+        Core->>Core: Corroborate: Verint OOA verdict + native NOTIFICATIONS + card-shape match + LOB-chat routing
+        alt Sources agree
+            Core->>Core: High confidence -> proceed
+        else Sources disagree / partial
+            Core->>Core: Confidence lowered to reflect disagreement -> still routed to HITL
+        end
+        Core->>OpStore: Log agreement/disagreement (audit)
+    end
+
+    %% ── 3. Card build (LLM drafts copy only — P1) ────────────────
+    rect rgb(240, 253, 244)
+        note over Core,LLM: LLM never dispatches — advisory/draft only (P1)
+        Core->>LLM: Request draft message (severity, rule, evidence)
+        LLM-->>Core: Drafted copy text only (no write credential, no target-system access)
+        Core->>Core: card_builder -> CommandCard {status: "pending_review"}
+    end
+
+    %% ── 4. Persist + push to HITL ─────────────────────────────────
+    Core->>OpStore: Write CommandCard (pending_review)
+    Core->>Push: Emit CardEvent
+    Push->>SPA: Stream CardEvent (WSS/SSE)
+    SPA->>RTA: Render card (draft message, severity, evidence) — pending_review
+
+    %% ── 5. Human-in-the-loop gate (P5) ───────────────────────────
+    rect rgb(238, 242, 255)
+        note over RTA,Gateway: P5 — nothing dispatches until a human acts, card stays pending_review
+        alt RTA approves
+            RTA->>SPA: Approve (optionally edit draft)
+            SPA->>Gateway: POST approve(cardId, actor: "rta")
+            Gateway->>Core: Mark CommandCard approved
+            Core->>OpStore: Write approval audit event (actor = "rta")
+        else RTA suppresses / escalates
+            RTA->>SPA: Suppress or escalate
+            SPA->>Gateway: POST decision(cardId, actor: "rta")
+            Gateway->>Core: Update CommandCard status
+            Core->>OpStore: Write decision audit event (actor = "rta")
+            note over Core,Dispatch: No dispatch — flow ends here for this card
+        end
+    end
+
+    %% ── 6. Dispatch (only after approval) ────────────────────────
+    rect rgb(241, 245, 249)
+        note over Dispatch,Chat: Dispatch fires only for approved cards — fan-out to configured targets
+        Core->>Dispatch: Approved CommandCard + final message
+        par To ServiceNow
+            Dispatch->>SNOW: Create incident (REST)
+            SNOW-->>Dispatch: Incident ID
+        and To chat
+            Dispatch->>Chat: Deliver alert (per-LOB channel)
+            Chat-->>Dispatch: Delivery ack
+        end
+        Dispatch->>OpStore: Write dispatch outcome (append-only audit trail)
+    end
