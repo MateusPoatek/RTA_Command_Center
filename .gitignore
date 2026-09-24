@@ -102,7 +102,14 @@ Archive/
 # simulation snapshots, plan/board docs), the May demo, the pipeline scratch,
 # top-level docs/, and meeting transcripts contain UN-sanitized real employee
 # PII and are excluded. Re-include deliberately later after sanitization.
-/POC/
+/POC/*
+!/POC/07_simulation/
+/POC/07_simulation/*
+!/POC/07_simulation/engine/
+# 07_simulation/engine/ is pure code (no PII) — required by
+# POC_Redefined/_engine_bridge.py as a sibling of POC_Redefined/. data/,
+# output/, and README.md under 07_simulation/ still carry real employee
+# names from the sim snapshots and stay excluded above.
 /CIBC_RTA_Demo_May/
 /pipeline/
 /docs/
