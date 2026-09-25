@@ -27,7 +27,7 @@
 // matches one of these known account ids are partitioned by account.
 // ---------------------------------------------------------------------------
 
-export const ACCOUNTS = ["EPIC", "EPIC_PH", "EPIC_BG", "ZILLOW", "CORELOGIC", "MY_HERITAGE"] as const;
+export const ACCOUNTS = ["EPIC", "EPIC_PH", "EPIC_BG", "ZILLOW", "CORELOGIC", "MY_HERITAGE", "HOTEL_PLANNER"] as const;
 export type AccountId = (typeof ACCOUNTS)[number];
 
 /** True if `lob` is one of the known live-capture account ids (not a demo sub-queue name). */
