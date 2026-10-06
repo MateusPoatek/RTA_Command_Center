@@ -51,7 +51,15 @@ export function groupByCycle(entries: DispatchEntry[]): DispatchBatch[] {
 // { cardsV2: [{ cardId: <generated server-side>, card: <this object> }] }.
 interface ChatCard {
   header: { title: string; subtitle?: string };
-  sections: { header?: string; widgets: { textParagraph: { text: string } }[] }[];
+  sections: {
+    header?: string;
+    collapsible?: boolean;
+    uncollapsibleWidgetsCount?: number;
+    widgets: (
+      | { textParagraph: { text: string } }
+      | { decoratedText: { text: string; bottomLabel?: string } }
+    )[];
+  }[];
 }
 
 // Confirmed live against the actual webhook, not assumed from docs:
@@ -121,16 +129,18 @@ export function buildGChatAlertBatchCard(cards: CommandCard[]): ChatCard {
     .map((sev) => {
       const group = bySeverity.get(sev)!;
       const color = SEVERITY_COLOR[sev];
-      const lines = group.map((c, i) => {
-        const idSuffix = c.agent?.id ? ` (#${c.agent.id})` : "";
+      const widgets = group.map((c) => {
+        const idSuffix = c.agent?.id ? ` #${c.agent.id}` : "";
         const nameWithId = `${c.agent?.name ?? c.title}${idSuffix}`;
         const detail = stripNameEcho(c.draftMessage ?? c.summary ?? c.title);
         const boldName = color ? font(color, `<b>${nameWithId}</b>`) : `<b>${nameWithId}</b>`;
-        return `${i + 1}. ${boldName} — ${detail}`;
+        return { decoratedText: { text: boldName, bottomLabel: detail } };
       });
       return {
         header: `${SEVERITY_EMOJI[sev]} ${SEVERITY_LABEL[sev]} (${group.length})`,
-        widgets: [{ textParagraph: { text: lines.join("<br>") } }],
+        collapsible: true,
+        uncollapsibleWidgetsCount: 0,
+        widgets,
       };
     });
 
