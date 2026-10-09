@@ -14,6 +14,15 @@ Exposes:
   Returns 200: { ok: true, date, gtt_total, verint_total, matched, discrepancy_count }
   Returns 4xx/5xx: { ok: false, error: "..." }
 
+  POST /gtt-events
+    Body (JSON): { functional_area, sites, date, tz, tz_label }
+    Returns 200: { ok: true, total_rows, events: [{ workdayId, employee, supervisor, event, at }] }
+      — clock_in/clock_out only, `at` = epoch ms UTC. Used by RTA_Board_V2.
+
+  POST /snapshot
+    Body (JSON): { account, ... } — RTA_Board_V2's received roster + GTT + computed numbers,
+    written to runs/snapshots/<ACCOUNT>_latest.json (+ timestamped copy) for diagnosis.
+
   POST /dispatch-alert
     Body (JSON): { account: "EPIC", message: "..." }
       — OR —
@@ -109,6 +118,11 @@ async def generate_report(request: Request) -> JSONResponse:
     # branch on a different time-tracking system) — skips the GTT fetch
     # entirely instead of failing/blocking the report.
     source: str = body.get("source", "gtt_verint")
+    # A blank functional area can never return GTT rows — a stale per-account
+    # config (e.g. EPIC_PH, which has no GTT) otherwise produced "gtt_verint"
+    # reports with gtt_total 0 that read as everyone-unclocked.
+    if not functional_area.strip():
+        source = "verint_only"
 
     # Write Verint rows to a temp fixture file in the format report_runner expects.
     fixture = {
@@ -249,9 +263,66 @@ async def dispatch_alert(request: Request) -> JSONResponse:
     return JSONResponse({"ok": True})
 
 
+async def gtt_events(request: Request) -> JSONResponse:
+    """Raw GTT clock events for one account/day — RTA Board V2 joins them itself.
+    Body: { functional_area, sites, date, tz, tz_label }. Returns
+    { ok, total_rows, events: [{ workdayId, employee, supervisor, event, at }] }
+    with `at` in epoch ms (from the UTC columns). Email/IP are never returned."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid JSON body"}, status_code=400)
+    functional_area = (body.get("functional_area") or "").strip()
+    date = body.get("date") or ""
+    if not functional_area or not date:
+        return JSONResponse({"ok": False, "error": "functional_area and date are required"}, status_code=400)
+    try:
+        import calendar
+        from gtt_adapter import fetch_gtt
+        rows = fetch_gtt(
+            functional_area=functional_area,
+            sites=body.get("sites", ""),
+            date=date,
+            tz=body.get("tz", "America/Toronto"),
+            tz_label=body.get("tz_label", "Eastern Time (America/Toronto)"),
+        )
+        events = [
+            {"workdayId": r.workday_id, "employee": r.employee, "supervisor": r.supervisor,
+             "event": r.event_type, "at": calendar.timegm(r.event_dt_utc.timetuple()) * 1000}
+            for r in rows
+            if r.event_type in ("clock_in", "clock_out") and r.event_dt_utc
+        ]
+        return JSONResponse({"ok": True, "total_rows": len(rows), "events": events})
+    except Exception as exc:
+        print(f"[local-api] gtt-events ERROR: {exc}", file=sys.stderr)
+        return JSONResponse({"ok": False, "error": str(exc)}, status_code=502)
+
+
+async def snapshot(request: Request) -> JSONResponse:
+    """RTA Board V2 posts what it received after each new extension capture, so it can be
+    read back for diagnosis. Writes runs/snapshots/<ACCOUNT>_latest.json plus a timestamped
+    copy. runs/ is gitignored — these files contain agent names; never commit them."""
+    try:
+        body = await request.json()
+    except Exception:
+        return JSONResponse({"ok": False, "error": "invalid JSON body"}, status_code=400)
+    account = "".join(c for c in str(body.get("account", "")).upper() if c.isalnum() or c == "_")
+    if not account:
+        return JSONResponse({"ok": False, "error": "account is required"}, status_code=400)
+    out_dir = BASE_DIR / "runs" / "snapshots"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    text = json.dumps(body, indent=1, ensure_ascii=False, default=str)
+    stamp = time.strftime("%Y%m%dT%H%M%S")
+    for name in (f"{account}_latest.json", f"{account}_{stamp}.json"):
+        (out_dir / name).write_text(text, encoding="utf-8")
+    return JSONResponse({"ok": True, "file": f"runs/snapshots/{account}_{stamp}.json"})
+
+
 routes = [
     Route("/generate-report", generate_report, methods=["POST"]),
     Route("/dispatch-alert", dispatch_alert, methods=["POST"]),
+    Route("/gtt-events", gtt_events, methods=["POST"]),
+    Route("/snapshot", snapshot, methods=["POST"]),
 ]
 
 app = Starlette(

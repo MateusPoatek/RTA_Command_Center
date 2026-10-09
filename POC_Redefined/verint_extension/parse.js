@@ -249,6 +249,56 @@
     return { scheduledStartIso: startIso, scheduledEndIso: endIso };
   }
 
+  // Precedence-resolved published day. Verified on the 2026-06-04 capture
+  // (runs/netcap_20260604T1610360300): a ShiftAssignment container (isPaid
+  // unset, precedence 1) holds ShiftEventAssignment activities that override it
+  // (paid breaks isPaid:true, unpaid lunch isPaid:false); CalendarEvent
+  // (meetings) and TimeOffEvent (precedence 70, planned absence) sit on top.
+  // At each instant the highest-precedence event wins. Paid = everything except
+  // an explicit isPaid:false and time off; time off is reported apart because
+  // the scorecard keeps planned absence inside the base schedule.
+  // Full-day totals only — "elapsed so far" is the consumer's job (it knows
+  // the current time; a roster can be pushed long after it was parsed).
+  function deriveScheduleDetail(rec) {
+    const pub = (rec.publishedSchedule && rec.publishedSchedule.events) || [];
+    const draft = (rec.draftSchedule && rec.draftSchedule.events) || [];
+    const state = pub.length ? "published" : draft.length ? "draft_only" : "none";
+    const ev = pub
+      .map((e) => ({ s: new Date(e.startTime).getTime(), e: new Date(e.endTime).getTime(), p: Number(e.precedence) || 0, raw: e }))
+      .filter((x) => !Number.isNaN(x.s) && !Number.isNaN(x.e) && x.e > x.s);
+    const cuts = [...new Set(ev.flatMap((x) => [x.s, x.e]))].sort((a, b) => a - b);
+    const out = { state: state, paid: 0, unpaid: 0, off: 0, segments: [] };
+    for (let i = 0; i < cuts.length - 1; i++) {
+      const a = cuts[i], b = cuts[i + 1];
+      let w = null;
+      for (const x of ev) if (x.s <= a && x.e >= b && (!w || x.p > w.p)) w = x;
+      if (!w) continue;
+      const unpaid = w.raw.isPaid === false || w.raw.isPaid === "false" || w.raw.isPaid === 0;
+      const kind = w.raw.eventType === "TimeOffEvent" ? "off" : unpaid ? "unpaid" : w.raw.eventType === "ShiftAssignment" ? "work" : "paid";
+      out[kind === "off" ? "off" : kind === "unpaid" ? "unpaid" : "paid"] += (b - a) / 60000;
+      const prev = out.segments[out.segments.length - 1];
+      if (prev && prev.e === a && prev.k === kind && prev.a === w.raw.activityId) prev.e = b;
+      else out.segments.push({ a: w.raw.activityId, k: kind, s: a, e: b });
+    }
+    out.paid = Math.round(out.paid); out.unpaid = Math.round(out.unpaid); out.off = Math.round(out.off);
+    return out;
+  }
+
+  // Next PLANNED activity that starts after now (publishedSchedule), so the
+  // dashboard can alert BEFORE a planned change. Label field name on published
+  // events is unverified against a live capture — falls back across the names
+  // seen elsewhere in this file.
+  function deriveNextActivity(rec, nowMs) {
+    const events = (rec.publishedSchedule && rec.publishedSchedule.events) || [];
+    let best = null, bestT = null;
+    for (const e of events) {
+      const t = e.startTime ? new Date(e.startTime).getTime() : NaN;
+      if (Number.isNaN(t) || t <= nowMs) continue;
+      if (bestT === null || t < bestT) { best = e; bestT = t; }
+    }
+    return best ? { name: best.label || best.activityName || best.plannedActivityName || "", startIso: best.startTime } : null;
+  }
+
   // Intraday hour buckets from the actual-worked timeline (same source as
   // deriveShiftProductive) — for "what hour of the day is busiest" charts.
   // Simplification: each event's FULL duration is bucketed under the hour of
@@ -271,8 +321,15 @@
     return buckets;
   }
 
+  // Full Capture reads the whole floor the Verint user can see (every client). opts.org (a RegExp on the
+  // Verint org name) keeps only the account's agents; records without an org name are kept.
+  function inOrg(r, org) {
+    const name = r.workResourceDetails && r.workResourceDetails.organizationName;
+    return !org || !name || org.test(name);
+  }
+
   // captures: { calendarFilter|calendarFilters: <obj>|[<obj>...], workResources: [<obj>...] }
-  // opts: { lob, target, snapshotTime }
+  // opts: { lob, target, snapshotTime, org }
   function buildCards(captures, opts) {
     opts = opts || {};
     const lob = opts.lob || "EPIC";
@@ -282,7 +339,7 @@
     const names = namesFromWorkResources(captures.workResources || []);
     let cfs = captures.calendarFilters || captures.calendarFilter || [];
     if (!Array.isArray(cfs)) cfs = [cfs];
-    const resourceData = mergeResourceData(cfs);
+    const resourceData = mergeResourceData(cfs).filter((r) => inOrg(r, opts.org));
 
     const cards = [];
     const perAgent = {};
@@ -351,7 +408,7 @@
     const names = namesFromWorkResources(captures.workResources || []);
     let cfs = captures.calendarFilters || captures.calendarFilter || [];
     if (!Array.isArray(cfs)) cfs = [cfs];
-    const resourceData = mergeResourceData(cfs);
+    const resourceData = mergeResourceData(cfs).filter((r) => inOrg(r, opts.org));
 
     const rows = [];
     for (const r of resourceData) {
@@ -367,7 +424,9 @@
       const adhPct = adh ? `${adh.inPct}%` : "";
       const sp = deriveShiftProductive(r); // shift_start/end from actualSchedule.events (same helper buildCards uses)
       const sched = deriveScheduledShift(r); // scheduled_shift_start/end from publishedSchedule.events — populated even before the agent has started
+      const next = deriveNextActivity(r, Date.now());
       const hourly = deriveHourlyBuckets(r); // per-hour active/productive minutes, for intraday charts
+      const sd = deriveScheduleDetail(r); // published vs draft, paid/unpaid/time-off minutes, resolved segments
 
       // Find the worst (longest) real OOA violation for this agent.
       const violations = (r.adherence && r.adherence.violations) || [];
@@ -410,10 +469,14 @@
         time_in_activity: fmtHms(ooaSecs),
         days_adherence: adhPct,
         lob: lob,
+        // Verint org leaf the agent belongs to (e.g. "BPO_Global_EPIC_TISV_Player Support") = the real line of business.
+        organization: (r.workResourceDetails && r.workResourceDetails.organizationName) || "",
         shift_start: (sp && sp.shiftStartIso) || "",
         shift_end: (sp && sp.shiftEndIso) || "",
         scheduled_shift_start: (sched && sched.scheduledStartIso) || "",
         scheduled_shift_end: (sched && sched.scheduledEndIso) || "",
+        next_activity: (next && next.name) || "",
+        next_activity_start: (next && next.startIso) || "",
         // Productive minutes so far today (paid vs work — see deriveShiftProductive's
         // note: the "productive" definition is a pending client-contract decision;
         // paid is the safer default). Adherence minutes from the same interval data
@@ -427,12 +490,19 @@
         // doesn't need restructuring for one field; parsed once on the
         // Python side (verint_normalize.py).
         hourly_buckets_json: JSON.stringify(hourly),
+        // Schedule detail (deriveScheduleDetail): "published" | "draft_only" | "none",
+        // full-day minutes, and the resolved timeline as [{a: activityId, k: work|paid|unpaid|off, s, e}] (epoch ms).
+        schedule_state: sd.state,
+        published_paid_minutes: sd.paid,
+        published_unpaid_minutes: sd.unpaid,
+        time_off_minutes: sd.off,
+        published_segments_json: JSON.stringify(sd.segments),
       });
     }
     return rows;
   }
 
-  const api = { buildCards, buildCard, extractRoster, severityFromOoa, fmtDuration, fmtHms, slug, namesFromWorkResources };
+  const api = { buildCards, buildCard, extractRoster, deriveScheduleDetail, severityFromOoa, fmtDuration, fmtHms, slug, namesFromWorkResources };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.RTAParse = api;
 })(typeof self !== "undefined" ? self : this);

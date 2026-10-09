@@ -280,4 +280,27 @@ test("extractRoster includes an employee resolved only via workResourceDetails.n
   );
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, "NoWorkResource, Delta");
+  assert.equal(rows[0].organization, "BPO_Global_DEMO_Cards");
+  const caps = { calendarFilters: [censusMissingFromWorkResources, targetedMissingFromWorkResources], workResources: [] };
+  assert.equal(RTAParse.extractRoster(caps, { lob: "DEMO", org: /DEMO_Cards/ }).length, 1);
+  assert.equal(RTAParse.extractRoster(caps, { lob: "DEMO", org: /EPIC.*_TISV/ }).length, 0); // other client's org dropped
+});
+
+// Shape verified on the 2026-06-04 capture: shift container + overriding activities + time off on top.
+test("deriveScheduleDetail resolves the published day by precedence (paid / unpaid / time off)", () => {
+  const T = (h, m = 0) => `2025-05-12T${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:00Z`;
+  const sd = RTAParse.deriveScheduleDetail({ publishedSchedule: { events: [
+    { eventType: "ShiftAssignment", precedence: 1, activityId: 10, startTime: T(14), endTime: T(23) },                       // 9h container
+    { eventType: "ShiftEventAssignment", precedence: 10, isPaid: true, activityId: 11, startTime: T(16), endTime: T(16, 15) }, // paid break
+    { eventType: "ShiftEventAssignment", precedence: 10, isPaid: false, activityId: 12, startTime: T(18), endTime: T(19) },   // unpaid lunch
+    { eventType: "TimeOffEvent", precedence: 70, activityId: 13, startTime: T(21), endTime: T(23) },                          // 2h time off
+  ] } });
+  assert.equal(sd.state, "published");
+  assert.deepEqual([sd.paid, sd.unpaid, sd.off], [6 * 60, 60, 120]); // 9h − 1h lunch − 2h off
+  assert.deepEqual(sd.segments.map((x) => x.k), ["work", "paid", "work", "unpaid", "work", "off"]);
+});
+
+test("deriveScheduleDetail: draft-only and empty schedules are not 'published'", () => {
+  assert.equal(RTAParse.deriveScheduleDetail({ publishedSchedule: { events: [] }, draftSchedule: { events: [{ startTime: "2025-05-12T14:00:00Z", endTime: "2025-05-12T15:00:00Z" }] } }).state, "draft_only");
+  assert.equal(RTAParse.deriveScheduleDetail({}).state, "none");
 });

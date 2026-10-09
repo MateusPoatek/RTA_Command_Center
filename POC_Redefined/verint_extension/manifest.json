@@ -6,7 +6,8 @@
   "permissions": ["storage", "alarms"],
   "host_permissions": [
     "*://*.verintcloudservices.com/*",
-    "http://localhost:5173/*"
+    "http://localhost:5173/*",
+    "http://localhost:5174/*"
   ],
   "background": { "service_worker": "background.js" },
   "action": {
@@ -27,7 +28,7 @@
       "world": "ISOLATED"
     },
     {
-      "matches": ["http://localhost:5173/*"],
+      "matches": ["http://localhost:5173/*", "http://localhost:5174/*"],
       "js": ["content_cc.js"],
       "run_at": "document_idle",
       "world": "ISOLATED"

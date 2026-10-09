@@ -143,7 +143,8 @@ function requestFullCapture() {
 }
 
 function pushToCommandCenter() {
-  chrome.tabs.query({ url: "http://localhost:5173/*" }, (tabs) => {
+  // 5173 = command-center, 5174 = RTA_Board_V2
+  chrome.tabs.query({ url: ["http://localhost:5173/*", "http://localhost:5174/*"] }, (tabs) => {
     for (const t of tabs) {
       chrome.tabs.sendMessage(
         t.id,
@@ -154,6 +155,14 @@ function pushToCommandCenter() {
   });
 }
 
+// Verint org names per capture account (pattern BPO_<Client>_<Site>_<LOB>, see the org tree in a netcap).
+// ponytail: hand-kept patterns for the pilot; accounts not listed are not filtered (old behaviour).
+const ACCOUNT_ORGS = {
+  EPIC: /EPIC.*_TISV/i,          // El Salvador: BPO_Global_EPIC_TISV[_Player Support|_Template Shifts]
+  EPIC_PH: /EPIC.*_TIPH/i,       // BPO_Global EPIC_TIPH[...]
+  HOTEL_PLANNER: /hotel\s*planner/i, // unconfirmed: no Hotel Planner org seen in a capture yet
+};
+
 function rebuild() {
   // Only this LOB's own tagged captures — never another LOB's relabeled.
   const captureData = {
@@ -161,12 +170,12 @@ function rebuild() {
     workResources: captures.workResources.filter((e) => e.lob === activeLob).map((e) => e.data),
   };
   try {
-    latestCards = self.RTAParse.buildCards(captureData, { lob: activeLob, target: Infinity }); // uncapped
+    latestCards = self.RTAParse.buildCards(captureData, { lob: activeLob, target: Infinity, org: ACCOUNT_ORGS[activeLob] }); // uncapped
   } catch (e) {
     latestCards = [];
   }
   try {
-    latestRoster = self.RTAParse.extractRoster(captureData, { lob: activeLob });
+    latestRoster = self.RTAParse.extractRoster(captureData, { lob: activeLob, org: ACCOUNT_ORGS[activeLob] });
   } catch (e) {
     latestRoster = [];
   }
