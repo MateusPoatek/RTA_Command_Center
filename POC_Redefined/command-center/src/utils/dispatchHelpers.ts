@@ -58,6 +58,9 @@ interface ChatCard {
 // `<font color="#hex">` inside a textParagraph DOES render real color,
 // unlike a card's header/subtitle which stay plain.
 const font = (hex: string, text: string | number) => `<font color="${hex}">${text}</font>`;
+// Verint names/skills/activities go into textParagraph HTML — escape them so a
+// stray "<" or "&" can't break (or inject into) the card's formatting.
+const esc = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
 
 const SEVERITY_ORDER: Severity[] = ["info", "low", "medium", "high", "critical"];
 const SEVERITY_EMOJI: Record<Severity, string> = {
@@ -105,8 +108,13 @@ function stripNameEcho(text: string): string {
  *
  * @param cards - Cards going to Chat for ONE account in this flush (not the
  *                whole batch — callers group by account first).
+ * @param opts  - Per-account format flags (see AccountConfig in accounts.ts).
+ *                Omitted -> the original format, unchanged.
  */
-export function buildGChatAlertBatchCard(cards: CommandCard[]): ChatCard {
+export function buildGChatAlertBatchCard(
+  cards: CommandCard[],
+  opts: { omitPleaseCheck?: boolean; languageById?: Record<string, string>; verintBase?: string } = {},
+): ChatCard {
   const count = cards.length;
   const bySeverity = new Map<Severity, CommandCard[]>();
   for (const c of cards) {
@@ -122,11 +130,24 @@ export function buildGChatAlertBatchCard(cards: CommandCard[]): ChatCard {
       const group = bySeverity.get(sev)!;
       const color = SEVERITY_COLOR[sev];
       const lines = group.map((c, i) => {
-        const idSuffix = c.agent?.id ? ` (#${c.agent.id})` : "";
-        const nameWithId = `${c.agent?.name ?? c.title}${idSuffix}`;
-        const detail = stripNameEcho(c.draftMessage ?? c.summary ?? c.title);
+        // No roster name -> the name is already "Agent #<id>"; don't repeat the id.
+        const idSuffix = c.agent?.id && c.agent.name !== `Agent #${c.agent.id}` ? ` (#${c.agent.id})` : "";
+        const nameWithId = esc(`${c.agent?.name ?? c.title}${idSuffix}`);
+        let detail = esc(stripNameEcho(c.draftMessage ?? c.summary ?? c.title));
+        if (opts.omitPleaseCheck) detail = detail.replace(/\s*Please check\.?\s*$/i, "");
         const boldName = color ? font(color, `<b>${nameWithId}</b>`) : `<b>${nameWithId}</b>`;
-        return `${i + 1}. ${boldName} — ${detail}`;
+        const language = c.agent?.id ? opts.languageById?.[String(c.agent.id)] : undefined;
+        // Shown verbatim (EPIC_BG: Verint skill names, so RTAs can filter by them).
+        const languageTag = language ? ` · ${esc(language)}` : "";
+        // Per-agent deep links: Verint's legacy Tracking pages accept the
+        // employee as ?selectedID= (the calendar has no per-employee URL).
+        // Both show today, which is what a live alert needs.
+        const id = c.agent?.id ? encodeURIComponent(String(c.agent.id)) : "";
+        const links = opts.verintBase && id
+          ? ` · <a href="${opts.verintBase}/wfo/control/peopleschedule_fs?selectedID=${id}">View shift</a>` +
+            ` · <a href="${opts.verintBase}/wfo/control/viewtimerecord_fs?selectedID=${id}">Day details</a>`
+          : "";
+        return `${i + 1}. ${boldName}${languageTag} — ${detail}${links}`;
       });
       return {
         header: `${SEVERITY_EMOJI[sev]} ${SEVERITY_LABEL[sev]} (${group.length})`,
@@ -136,7 +157,7 @@ export function buildGChatAlertBatchCard(cards: CommandCard[]): ChatCard {
 
   return {
     header: {
-      title: "🚨 OUT OF ADHERENCE ALERTS: PLEASE CHECK 🚨",
+      title: opts.omitPleaseCheck ? "🚨 OUT OF ADHERENCE ALERTS 🚨" : "🚨 OUT OF ADHERENCE ALERTS: PLEASE CHECK 🚨",
       subtitle: `${count} alert${count === 1 ? "" : "s"} — ${new Date().toLocaleString()}`,
     },
     sections,

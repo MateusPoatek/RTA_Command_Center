@@ -286,6 +286,10 @@
 
     const cards = [];
     const perAgent = {};
+    // The same violation can be listed more than once for an employee. Emit it
+    // once — duplicates showed up as repeated rows in Chat and ate the
+    // per-agent cap below.
+    const seenViolations = new Set();
     for (const r of resourceData) {
       const eid = Number(r.id);
       const name = names[eid] || nameFromResourceRecord(r) || `Agent #${eid}`;
@@ -297,6 +301,9 @@
         const actual = ((v.actualEventData || [{}])[0] || {}).label;
         if (NO_ACTUAL.has(actual)) continue; // no real actual -> skip
         if (actual === v.plannedActivityName) continue; // not a real mismatch
+        const vKey = `${eid}|${v.startTime}|${v.endTime}|${v.plannedActivityName}|${actual}`;
+        if (seenViolations.has(vKey)) continue; // duplicate of one already emitted
+        seenViolations.add(vKey);
         if ((perAgent[eid] || 0) >= 2) continue; // variety cap per agent
         const card = buildCard({ ...v, employeeId: v.employeeId || eid }, name, lob, snapshotTime);
         // Replace the placeholder agent metrics with REAL Verint-derived values.

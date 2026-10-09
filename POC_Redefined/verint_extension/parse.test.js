@@ -281,3 +281,17 @@ test("extractRoster includes an employee resolved only via workResourceDetails.n
   assert.equal(rows.length, 1);
   assert.equal(rows[0].name, "NoWorkResource, Delta");
 });
+
+test("buildCards emits a violation once even if Verint lists it twice", () => {
+  // The same violation repeated in an employee's violations array used to
+  // produce two identical cards -> repeated rows in the Chat alert.
+  const dup = { employeeId: 2001, plannedActivityName: "Email", startTime: "2025-05-12T15:00:00Z", endTime: "2025-05-12T15:20:00Z", actualEventData: [{ label: "Break" }] };
+  const targetedWithDuplicate = { data: { attributes: { resourceData: [
+    { id: 2001, adherence: { violations: [dup, { ...dup }] } },
+  ] } } };
+  const cards = RTAParse.buildCards(
+    { calendarFilters: [censusMissingFromWorkResources, targetedWithDuplicate], workResources: [] },
+    { lob: "DEMO", target: 15, snapshotTime: "2026-06-11T12:00:00Z" },
+  );
+  assert.equal(cards.length, 1);
+});
