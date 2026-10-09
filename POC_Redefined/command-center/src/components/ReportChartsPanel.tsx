@@ -240,18 +240,18 @@ function UtilizationChart({ rows }: { rows: DiscrepancyRow[] }) {
 // ---------------------------------------------------------------------------
 
 function AbsenteeismStat({ rows, verintTotal }: { rows: DiscrepancyRow[]; verintTotal: number }) {
-  // in_adherence_no_clock_in is NOT absenteeism — that agent has real Verint
-  // activity, just no GTT clock-in. Only count real gaps.
-  const absentCount = rows.filter(
-    (r) => r.discrepancy_type === "clocked_in_not_in_adherence" || r.discrepancy_type === "no_clock_in_no_activity",
-  ).length;
-  const rate = verintTotal > 0 ? (absentCount / verintTotal) * 100 : 0;
+  // Mirrors report_intelligence.py: UnplannedAbs / Base_Sched. Absent = no
+  // clock-in AND no Verint activity; GTT-clocked-in agents aren't absent.
+  // Denominator = scheduled Verint agents whose shift has started.
+  const absentCount = rows.filter((r) => r.discrepancy_type === "no_clock_in_no_activity").length;
+  const scheduled = verintTotal - rows.filter((r) => r.discrepancy_type === "not_yet_scheduled").length;
+  const rate = scheduled > 0 ? (absentCount / scheduled) * 100 : 0;
 
   return (
     <div className="rcp-card rcp-card--stat">
       <div className="rcp-card__title">Absenteeism</div>
       <div className="rcp-stat__value">{rate.toFixed(1)}%</div>
-      <div className="rcp-stat__sub">{absentCount} of {verintTotal} agent(s)</div>
+      <div className="rcp-stat__sub">{absentCount} of {scheduled} scheduled agent(s)</div>
     </div>
   );
 }

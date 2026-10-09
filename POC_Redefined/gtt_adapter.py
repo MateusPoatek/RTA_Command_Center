@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from datetime import datetime
 
 _URL = "https://gttpostmortemreport-1040489670153.europe-west1.run.app"
-_DEFAULT_KEY = "GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json"
+_DEFAULT_KEY = "GTT_JSON/td-sa-wfm-gtt-reports02_2026-08-12.json"
 
 # Column indices in the API response (array-of-arrays format, per the docx)
 _COL_SITE = 0
@@ -33,8 +33,8 @@ _COL_SUBGROUP = 6
 _COL_STATUS = 7           # "clock_in" | "clock_out"
 _COL_DATE_ET = 8          # "YYYY-MM-DD"
 _COL_TIME_ET = 9          # "HH:MM:SS"
-_COL_DATE_UTC = 12
-_COL_TIME_UTC = 13
+_COL_DATE_UTC = 17        # startDateUTC (12=duration, 13=ip — not UTC)
+_COL_TIME_UTC = 18        # startTimeUTC
 
 
 @dataclass

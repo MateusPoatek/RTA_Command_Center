@@ -167,12 +167,12 @@ def _generate_tagged(report: ReconciliationReport) -> list[tuple[str, bool]]:
                 True,
             ))
 
-    # --- Absenteeism rate (standard WFM metric) ---
-    # % of the roster with a REAL gap (no_clock + unmatched) — deliberately
-    # excludes not_yet_scheduled and present_no_clock_in, same as
-    # discrepancy_count: an agent who's actually working isn't absent.
-    roster_size = report.verint_total or 1
-    absent_count = len(unmatched) + len(no_clock)
+    # --- Absenteeism rate (standard WFM metric: UnplannedAbs / Base_Sched) ---
+    # Absent = scheduled agent with no clock-in AND no Verint activity
+    # (no_clock). Not unmatched — those DID clock in to GTT. Denominator =
+    # scheduled (Verint) agents whose shift has started (excl. not_yet).
+    roster_size = (report.verint_total - len(not_yet)) or 1
+    absent_count = len(no_clock)
     if absent_count > 0:
         absenteeism_rate = absent_count / roster_size * 100
         bullets.append((
