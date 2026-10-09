@@ -214,7 +214,7 @@ function handleMessage(msg, sendResponse) {
     });
   } else if (msg.type === "push-now") {
     pushToCommandCenter();
-    sendResponse({ ok: true, count: latestCards.length });
+    sendResponse({ ok: true, count: latestCards.length, rosterCount: latestRoster.length });
   } else if (msg.type === "trigger-capture") {
     // Hub "Sync now" / scheduled tick: re-push latest cards + ask Verint to re-fetch.
     pushToCommandCenter();
