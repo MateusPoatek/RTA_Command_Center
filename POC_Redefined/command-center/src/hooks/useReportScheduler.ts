@@ -51,7 +51,7 @@ export function useReportScheduler(schedule: ReportSchedule, onTrigger: () => vo
       if (times.length === 0) return;
       const now = new Date();
       const hhmm = `${pad2(now.getHours())}:${pad2(now.getMinutes())}`;
-      const fireKey = `${now.toISOString().slice(0, 10)}T${hhmm}`;
+      const fireKey = `${now.toLocaleDateString("en-CA")}T${hhmm}`; // local day, same clock as hhmm
       if (times.includes(hhmm) && !firedRef.current.has(fireKey)) {
         firedRef.current.add(fireKey);
         cb.current();

@@ -33,6 +33,12 @@ export interface AccountConfig {
   /** The clock-in/out system this account's site actually uses (or targets, if not yet integrated). Descriptive only — doesn't drive any runtime branching (that's gttAvailable/source); just accurate status for whoever picks up the next connector. */
   clockSystem: "GTT" | "Verint MyTime" | "PST" | "TBD";
   clockSystemStatus: "live" | "negotiating_api_access" | "not_started";
+  /** Feature flag: show each agent's language next to their name in Chat alerts, read from runs/agent_languages_<ACCOUNT>.csv (employee_id,language). Verint keeps language in a custom field (Language_BPO) none of our captures return. */
+  alertShowAgentLanguage?: boolean;
+  /** Feature flag: drop "PLEASE CHECK" from the Chat alert heading and the trailing "Please check." on each row (client request). */
+  alertOmitPleaseCheck?: boolean;
+  /** Feature flag: add per-agent "View shift" / "Day details" links (Verint Tracking pages on verintUrl's host) to each Chat alert row. */
+  alertShowVerintLink?: boolean;
 }
 
 export const ACCOUNT_CATALOG: Record<AccountId, AccountConfig> = {
@@ -73,7 +79,8 @@ export const ACCOUNT_CATALOG: Record<AccountId, AccountConfig> = {
   EPIC_BG: {
     id: "EPIC_BG",
     label: "Epic Games (Bulgaria)",
-    verintUrl: null,
+    // Confirmed 2026-10-08: Bulgaria's Verint calendar (same a87 tenant as EPIC).
+    verintUrl: "https://wfo.a87.verintcloudservices.com/wfo/ui/#wsm%5Bws%5D=wfmcal",
     gttFunctionalArea: "",
     gttSites: [],
     timezone: "Europe/Sofia",
@@ -81,6 +88,9 @@ export const ACCOUNT_CATALOG: Record<AccountId, AccountConfig> = {
     gttAvailable: false,
     clockSystem: "Verint MyTime",
     clockSystemStatus: "negotiating_api_access",
+    alertShowAgentLanguage: true,
+    alertOmitPleaseCheck: true,
+    alertShowVerintLink: true,
   },
   ZILLOW: {
     id: "ZILLOW",
@@ -150,6 +160,21 @@ const GTT_ONLY_COLUMNS: (keyof import("./types").DiscrepancyRow)[] = [
   "gtt_event",
   "gtt_event_count",
 ];
+
+/**
+ * YYYY-MM-DD for `date` in the ACCOUNT's timezone — the day GTT/Verint
+ * consider "today". Never use toISOString() for this: that's UTC, so from
+ * 18:00 in Central America it already returns tomorrow and GTT answers
+ * HTTP 200 with 0 rows.
+ */
+export function accountDateStr(account: AccountId, date: Date = new Date()): string {
+  const timeZone = ACCOUNT_CATALOG[account]?.timezone;
+  try {
+    return new Intl.DateTimeFormat("en-CA", { timeZone }).format(date);
+  } catch {
+    return date.toLocaleDateString("en-CA"); // unknown/invalid tz → browser-local day
+  }
+}
 
 /** The right functionalArea/sites/source default for THIS account — not the global EPIC-shaped default. */
 export function defaultReportConfigFor(account: AccountId): ReportConfig {

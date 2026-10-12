@@ -22,15 +22,37 @@ chrome.runtime.onMessage.addListener((msg) => {
 // On (re)load of the Command Center tab, pull whatever's already captured.
 chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
   if (chrome.runtime.lastError) return;
-  if (resp && resp.cards && resp.cards.length) inject(resp.cards, resp.lastSyncedAt, resp.roster);
+  // Roster alone counts too: with 0 out-of-adherence agents there are no cards,
+  // but the report still needs the roster (verint_rows) to reconcile against GTT.
+  if (resp && ((resp.cards && resp.cards.length) || (resp.roster && resp.roster.length))) {
+    inject(resp.cards, resp.lastSyncedAt, resp.roster);
+  }
 });
 
 // Relay capture-control messages FROM the Command Center page TO the background
 // (the "Capture Data" hub: Sync now + frequency). Page → content_cc → background.
-window.addEventListener("message", (e) => {
+window.addEventListener("message", function relay(e) {
   if (e.source !== window) return;
   const d = e.data;
   if (!d || d.__rtaLiveBridge !== true) return;
+  // After the extension is reloaded, this (orphaned) script's chrome.runtime is
+  // gone and sendMessage throws "Extension context invalidated". Stop relaying
+  // quietly — reloading the Command Center tab attaches the new script.
+  let alive = false;
+  try { alive = !!chrome.runtime?.id; } catch (_) { /* invalidated context can throw on access */ }
+  if (!alive) {
+    window.removeEventListener("message", relay);
+    return;
+  }
+  try {
+    relayToBackground(d);
+  } catch (_) {
+    // Context invalidated between the check and the send — same as above.
+    window.removeEventListener("message", relay);
+  }
+});
+
+function relayToBackground(d) {
   if (d.kind === "trigger-capture") {
     chrome.runtime.sendMessage({ type: "trigger-capture" }, () => void chrome.runtime.lastError);
   } else if (d.kind === "set-frequency") {
@@ -49,4 +71,4 @@ window.addEventListener("message", (e) => {
     // accounts in the app, extension keeps capturing under the old LOB).
     chrome.runtime.sendMessage({ type: "set-lob", lob: d.lob }, () => void chrome.runtime.lastError);
   }
-});
+}

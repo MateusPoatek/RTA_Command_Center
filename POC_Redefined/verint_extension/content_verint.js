@@ -24,6 +24,16 @@ window.addEventListener("message", (e) => {
   }
 });
 
+// Keep this Verint tab from being frozen by Chrome while it sits in the
+// background: a frozen tab can't answer the scheduled re-fetch, so alerts
+// silently stop. Holding a Web Lock exempts the page from freezing (same trick
+// as the Command Center). Top frame only; never released while the page lives.
+// Shared mode so EVERY Verint tab holds it (an exclusive lock would leave a
+// second tab waiting forever — i.e. unprotected).
+if (window.top === window && navigator.locks) {
+  navigator.locks.request("rta-verint-keepalive", { mode: "shared" }, () => new Promise(() => {})).catch(() => {});
+}
+
 // Background → here → inject.js (MAIN world): relay a re-fetch command (the page
 // replays the calendar-filter request in the user's session), a "probe" command
 // (run the read-only Floor-View gate probe), or a "full-capture" command (run

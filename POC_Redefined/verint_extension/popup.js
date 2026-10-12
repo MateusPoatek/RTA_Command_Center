@@ -5,10 +5,13 @@ const pushBtn = document.getElementById("push");
 const autopushEl = document.getElementById("autopush");
 const lobEl = document.getElementById("lob");
 
-function render(cards) {
+function render(cards, rosterCount) {
   countEl.textContent = String(cards.length);
-  pushBtn.disabled = cards.length === 0;
-  pushBtn.textContent = cards.length ? `Push ${cards.length} → Command Center` : "Push to Command Center";
+  // A roster with 0 alerts is still worth pushing — it's what the report reconciles against GTT.
+  pushBtn.disabled = cards.length === 0 && !rosterCount;
+  pushBtn.textContent = cards.length || rosterCount
+    ? `Push ${cards.length} alerts + ${rosterCount || 0} agents → Command Center`
+    : "Push to Command Center";
   listEl.innerHTML = "";
   for (const c of cards.slice(0, 12)) {
     const li = document.createElement("li");
@@ -51,7 +54,7 @@ function paintHeartbeat() {
 function refreshState() {
   chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
     if (chrome.runtime.lastError) return;
-    render((resp && resp.cards) || []);
+    render((resp && resp.cards) || [], ((resp && resp.roster) || []).length);
     if (autopushEl) autopushEl.checked = !!(resp && resp.autoPush);
     hbLastSynced = (resp && resp.lastSyncedAt) || null;
     hbCount = (resp && resp.captureLog && resp.captureLog.length) || 0;
@@ -123,7 +126,9 @@ setInterval(refreshState, 3000); // re-poll for fresh captures while the popup i
 pushBtn.addEventListener("click", () => {
   chrome.runtime.sendMessage({ type: "push-now" }, (resp) => {
     if (chrome.runtime.lastError) return;
-    pushBtn.textContent = resp && resp.count ? `Pushed ${resp.count} cards ✓` : "No cards yet";
+    pushBtn.textContent = resp && (resp.count || resp.rosterCount)
+      ? `Pushed ${resp.count} alerts + ${resp.rosterCount || 0} agents ✓`
+      : "Nothing captured yet";
     setTimeout(refreshState, 1800); // restore the "Push N →" label with the live count
   });
 });

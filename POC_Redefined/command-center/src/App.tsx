@@ -56,7 +56,7 @@ import type {
   ReportHistoryEntry,
 } from "./domain/types";
 import { ACCOUNTS, isAccountCard } from "./domain/types";
-import { defaultReportConfigFor, ACCOUNT_CATALOG } from "./domain/accounts";
+import { defaultReportConfigFor, ACCOUNT_CATALOG, accountDateStr } from "./domain/accounts";
 
 // Shared
 import { formatChannel } from "./shared/channelConfig";
@@ -162,15 +162,26 @@ function App() {
   const idCounter = useRef(0);
 
   // -- Shift lifecycle -------------------------------------------------------
-  const [shiftStarted,     setShiftStarted]    = useState(false);
+  // Shift / auto mode / capture cadence / batch clock survive a page reload —
+  // a reload used to silently turn everything off and alerts stopped flowing.
+  const [shiftStarted,     setShiftStarted]    = useState(() => localStorage.getItem("rta.shiftActive") === "1");
   const [shiftClosed,      setShiftClosed]     = useState(false);
-  const [briefingOpen,     setBriefingOpen]    = useState(true);
+  const [briefingOpen,     setBriefingOpen]    = useState(() => localStorage.getItem("rta.shiftActive") !== "1");
+  useEffect(() => {
+    localStorage.setItem("rta.shiftActive", shiftStarted && !shiftClosed ? "1" : "0");
+  }, [shiftStarted, shiftClosed]);
   const [closePanelOpen,   setClosePanelOpen]  = useState(false);
   const [captureModalOpen, setCaptureModalOpen] = useState(false);
   // Capture Data hub: source + cadence (override + transparency live in the modal).
   const [captureConfigOpen, setCaptureConfigOpen] = useState(false);
   const [captureSystem, setCaptureSystem] = useState<CaptureSystem>("verint");
-  const [captureFrequency, setCaptureFrequency] = useState<number | null>(null);
+  const [captureFrequency, setCaptureFrequency] = useState<number | null>(() => {
+    const saved = Number(localStorage.getItem("rta.captureFrequency"));
+    return saved > 0 ? saved : null;
+  });
+  useEffect(() => {
+    localStorage.setItem("rta.captureFrequency", String(captureFrequency ?? 0));
+  }, [captureFrequency]);
   const [aiStatus, setAiStatus] = useState<"Idle" | "Watching" | "Needs Review" | "Generating Report" | "Autonomous">("Idle");
 
   // -- Cards and selection ---------------------------------------------------
@@ -205,7 +216,17 @@ function App() {
   useEffect(() => {
     localStorage.setItem("rta.batchIntervalMinutes", String(batchIntervalMinutes));
   }, [batchIntervalMinutes]);
-  const [lastBatchAt, setLastBatchAt] = useState<number>(() => Date.now());
+  // Restored across reloads so the countdown continues instead of restarting.
+  // If the saved time is already past the interval the timer sits at 0 and
+  // flushes as soon as autonomous mode re-queues the (re-pushed) cards.
+  // Clamped to now: a future value (clock skew / time set back) would otherwise
+  // hold the countdown above the interval and nothing would flush until then.
+  const [lastBatchAt, setLastBatchAt] = useState<number>(
+    () => Math.min(Number(localStorage.getItem("rta.lastBatchAt")) || Date.now(), Date.now()),
+  );
+  useEffect(() => {
+    localStorage.setItem("rta.lastBatchAt", String(lastBatchAt));
+  }, [lastBatchAt]);
   const [secondsUntilNextBatch, setSecondsUntilNextBatch] = useState<number>(batchIntervalMinutes * 60);
   const batchSeqRef = useRef(0); // -> DispatchEntry.cycle, shared by every alert in one flush
   const pendingSentByRef = useRef<Map<string, "rta" | "ai">>(new Map()); // cardId -> who approved it, until flush
@@ -219,8 +240,35 @@ function App() {
     return `${c.lob ?? "—"}:${c.rule?.id ?? c.title}:${c.agent?.id ?? c.agent?.name ?? c.id}`;
   }
 
+  // -- "Already sent today" ledger (shared by every tab, survives reloads) -----
+  // actionedKeysRef is memory-only, so a reload / tab discard / leader hand-off
+  // used to re-approve and RE-SEND every open violation to the client's Chat.
+  // The ledger records each violation identity actually dispatched today (per
+  // account, per account-local day) and is checked both when live cards arrive
+  // and right before sending — the last line of defence against duplicates.
+  const sentLedgerKey = (account: AccountId) => `rta.sentKeys.${account}.${accountDateStr(account)}`;
+  function readSentLedger(account: AccountId): Set<string> {
+    try {
+      return new Set(JSON.parse(localStorage.getItem(sentLedgerKey(account)) ?? "[]") as string[]);
+    } catch {
+      return new Set();
+    }
+  }
+  function addToSentLedger(account: AccountId, keys: string[]): void {
+    const set = readSentLedger(account);
+    keys.forEach((k) => set.add(k));
+    try { localStorage.setItem(sentLedgerKey(account), JSON.stringify([...set])); } catch { /* quota: best effort */ }
+  }
+
+  // Leader election (see the Web Lock effect further down): only the tab
+  // holding the lock auto-approves, auto-flushes and runs the schedulers.
+  const isLeaderRef = useRef(false);
+
   // -- Autonomous AI mode ----------------------------------------------------
-  const [autoMode,        setAutoMode]        = useState(false);
+  const [autoMode,        setAutoMode]        = useState(() => localStorage.getItem("rta.autoMode") === "1");
+  useEffect(() => {
+    localStorage.setItem("rta.autoMode", autoMode ? "1" : "0");
+  }, [autoMode]);
   const [autoSentCount,   setAutoSentCount]   = useState(0);
   const [lastAutoAction,  setLastAutoAction]  = useState<AutoAction | null>(null);
 
@@ -255,14 +303,14 @@ function App() {
   // Today's generations (manual + scheduled), for the GTT-vs-Verint totals
   // chart. Resets when the calendar day rolls over — no multi-day history.
   const [reportSnapshotsToday, setReportSnapshotsToday] = useState<ReportHistoryEntry[]>([]);
-  const snapshotsDayRef = useRef<string>(new Date().toISOString().slice(0, 10));
+  const snapshotsDayRef = useRef<string>(accountDateStr(activeAccount));
 
   // Walk back up to 3 days to find the most recent report for THIS account.
   const fetchLatestReport = useCallback(async (account: AccountId): Promise<ReconciliationReport | null> => {
     for (let daysBack = 0; daysBack < 4; daysBack++) {
       const d = new Date();
       d.setDate(d.getDate() - daysBack);
-      const dateStr = d.toISOString().slice(0, 10);
+      const dateStr = accountDateStr(account, d);
       try {
         const r = await fetch(`/runs/reports/reconciliation_${account}_${dateStr}.json`);
         if (r.ok) {
@@ -283,7 +331,7 @@ function App() {
   // both funnel through here); resets the series on a calendar-day rollover
   // since the chart is "today only" by design.
   const appendReportSnapshot = useCallback((report: ReconciliationReport) => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = accountDateStr(activeAccountRef.current);
     if (snapshotsDayRef.current !== today) {
       snapshotsDayRef.current = today;
       setReportSnapshotsToday([]);
@@ -313,9 +361,33 @@ function App() {
   const activeAccountRef = useRef<AccountId>(activeAccount);
   useEffect(() => { activeAccountRef.current = activeAccount; }, [activeAccount]);
 
+  // Agent language for Chat alerts (feature flag alertShowAgentLanguage):
+  // runs/agent_languages_<ACCOUNT>.csv, "employee_id,<label>" per line. The
+  // label may itself contain commas (EPIC_BG: the agent's Verint skill names,
+  // e.g. "TIB EPIC Polish, TIB EPIC Polish Chat"), so split on the FIRST comma.
+  // Missing/empty file -> no language shown; never blocks a dispatch.
+  const languagesRef = useRef<Record<string, string>>({});
+  useEffect(() => {
+    languagesRef.current = {};
+    if (!ACCOUNT_CATALOG[activeAccount]?.alertShowAgentLanguage) return;
+    fetch(`/runs/agent_languages_${activeAccount}.csv`)
+      .then((r) => (r.ok ? r.text() : ""))
+      .then((text) => {
+        const map: Record<string, string> = {};
+        for (const line of text.split(/\r?\n/).slice(1)) {
+          const comma = line.indexOf(",");
+          const id = line.slice(0, comma).trim();
+          const label = line.slice(comma + 1).trim().replace(/^"|"$/g, "");
+          if (comma > 0 && id && label) map[id] = label;
+        }
+        languagesRef.current = map;
+      })
+      .catch(() => {});
+  }, [activeAccount]);
+
   const generateReport = useCallback(async () => {
     const account = activeAccountRef.current;
-    const today = new Date().toISOString().slice(0, 10);
+    const today = accountDateStr(account);
     try {
       const res = await fetch("/api/generate-report", {
         method: "POST",
@@ -345,6 +417,9 @@ function App() {
   // ---------------------------------------------------------------------------
 
   const handleAutoAction = useCallback((cardId: string) => {
+    // Standby tabs must not build up a queue of their own: it would be flushed
+    // (stale, duplicated) the moment they inherit leadership.
+    if (!isLeaderRef.current) return;
     const card = cards.find((c) => c.id === cardId);
     if (!card) return;
 
@@ -418,10 +493,18 @@ function App() {
     // because a recapture still sees it, even under a new raw card id.
     setCards((prevCards) => {
       const prevByKey = new Map(prevCards.map((c) => [cardIdentityKey(c), c]));
+      const ledgers = new Map<string, Set<string>>();
       return liveCards.map((incoming) => {
         const key = cardIdentityKey(incoming);
         if (actionedKeysRef.current.has(key)) {
           return prevByKey.get(key) ?? incoming;
+        }
+        // Already dispatched today (by this or another tab, before a reload):
+        // arrive as "sent" so autonomous mode doesn't approve it again.
+        if (isAccountCard(incoming.lob)) {
+          let ledger = ledgers.get(incoming.lob);
+          if (!ledger) { ledger = readSentLedger(incoming.lob); ledgers.set(incoming.lob, ledger); }
+          if (ledger.has(key)) return { ...incoming, status: "sent" as const };
         }
         return incoming;
       });
@@ -455,7 +538,9 @@ function App() {
     else startCapture();
   }, [captureSystem, postToExtension, startCapture]);
 
-  useCaptureScheduler(captureFrequency, triggerCaptureTick);
+  // Schedulers run in the leader tab only — otherwise N open tabs replay
+  // Verint N times, generate the report N times and send N digests.
+  useCaptureScheduler(captureFrequency, () => { if (isLeaderRef.current) triggerCaptureTick(); });
 
   // Scheduled report trigger: ask the extension for a fresh Full Capture
   // first (per Mateus — GTT's total grows through the day as more agents
@@ -469,14 +554,16 @@ function App() {
     }, 20_000); // Full Capture "only lasts seconds" per popup.js — generous margin
   }, [postToExtension, generateReport]);
 
-  useReportScheduler(reportConfig.schedule, generateScheduledReport);
+  useReportScheduler(reportConfig.schedule, () => { if (isLeaderRef.current) generateScheduledReport(); });
 
   // Attendance + Adherence digest to Google Chat — independent of the report
   // GENERATION schedule above; this just formats+sends whatever Attendance
   // report and live Adherence state already exist right now. Manual trigger
   // (Report Config's "Send Now" button) reuses this same function.
   const sendChatDigest = useCallback(() => {
-    const accountCards = cards.filter((c) => !isAccountCard(c.lob) || c.lob === activeAccount);
+    // Live cards of THIS account only — demo/scenario cards (lob "TLB",
+    // "COSTCO"…, fake agents) must never reach the client's Chat space.
+    const accountCards = cards.filter((c) => c.lob === activeAccount);
     const adherence = buildAdherenceSummary(accountCards);
     const label = ACCOUNT_CATALOG[activeAccount]?.label ?? activeAccount;
     const card = buildChatDigestCard(reportPayload, adherence, label);
@@ -493,7 +580,7 @@ function App() {
   // Reuses the same generic "fire every N seconds" hook as the capture
   // frequency timer above — 30 minutes is a fixed cadence for now, not a
   // user-configurable interval (nothing asked for one yet).
-  useCaptureScheduler(reportConfig.chatDigestEnabled ? 1800 : null, sendChatDigest);
+  useCaptureScheduler(reportConfig.chatDigestEnabled ? 1800 : null, () => { if (isLeaderRef.current) sendChatDigest(); });
 
   // Account switch: reload every account-scoped slot instead of leaving the
   // PREVIOUS account's report/config/roster sitting in shared state, and
@@ -794,13 +881,13 @@ function App() {
           pendingSentByRef.current.delete(card.id);
           sentIds.add(card.id);
 
-          // Live-captured cards are tagged with the real account in `lob`
-          // (see isAccountCard). Demo/scenario cards use `lob` for a
-          // sub-queue name instead (e.g. "TLB", "COSTCO") — they carry no
-          // account of their own, so fall back to whichever account is
-          // currently selected in the Command Center header.
-          if (channel === "google-chat-lob") {
-            const account = isAccountCard(card.lob) ? card.lob : activeAccount;
+          // Only live-captured cards (tagged with a real account in `lob`, see
+          // isAccountCard) go to a real Chat webhook. Demo/scenario cards use
+          // `lob` for a sub-queue name ("TLB", "COSTCO") — they used to fall
+          // back to the selected account and leaked fake agents (e.g. "Clara
+          // Mendoza") into the client's alert space. They stay simulated.
+          if (channel === "google-chat-lob" && isAccountCard(card.lob)) {
+            const account = card.lob as string;
             const list = realSendCardsByAccount.get(account);
             if (list) list.push(card);
             else realSendCardsByAccount.set(account, [card]);
@@ -821,10 +908,27 @@ function App() {
     setLastBatchAt(Date.now());
     setSecondsUntilNextBatch(batchIntervalMinutes * 60);
 
-    const realSends = [...realSendCardsByAccount.entries()].map(([account, accountCards]) => ({
-      account,
-      card: buildGChatAlertBatchCard(accountCards),
-    }));
+    // Skip violations already dispatched today (shared ledger — another tab, or
+    // this one before a reload), record the rest, then send ONE Chat message
+    // per MAX_BATCH_SIZE cards: a single huge card can exceed Chat's message
+    // size limit, get a 4xx and silently lose the whole batch.
+    const realSends: { account: string; card: ReturnType<typeof buildGChatAlertBatchCard> }[] = [];
+    for (const [account, accountCards] of realSendCardsByAccount.entries()) {
+      const acct = account as AccountId;
+      const ledger = readSentLedger(acct);
+      const fresh = accountCards.filter((c) => !ledger.has(cardIdentityKey(c)));
+      if (fresh.length === 0) continue;
+      addToSentLedger(acct, fresh.map(cardIdentityKey));
+      const cfg = ACCOUNT_CATALOG[acct];
+      const opts = {
+        omitPleaseCheck: cfg?.alertOmitPleaseCheck,
+        languageById: cfg?.alertShowAgentLanguage ? languagesRef.current : undefined,
+        verintBase: cfg?.alertShowVerintLink && cfg.verintUrl ? new URL(cfg.verintUrl).origin : undefined,
+      };
+      for (let i = 0; i < fresh.length; i += MAX_BATCH_SIZE) {
+        realSends.push({ account, card: buildGChatAlertBatchCard(fresh.slice(i, i + MAX_BATCH_SIZE), opts) });
+      }
+    }
 
     // Fire-and-forget: an account with no webhook configured just stays
     // simulated (backend returns ok:false, not a 500) — the dispatch log
@@ -848,6 +952,35 @@ function App() {
   const flushBatchRef = useRef(flushBatch);
   flushBatchRef.current = flushBatch;
 
+  // Chrome freezes background tabs (timers stop), which silently stalled
+  // autonomous approvals and the batch flush. Holding a Web Lock exempts the
+  // page from freezing. The same exclusive lock elects ONE leader tab: only it
+  // auto-flushes, so several open Command Center tabs don't each send the batch
+  // (that tripled every Chat message). Closing the leader hands the lock over.
+  // ponytail: move batching to local_api / extension alarms if this proves insufficient.
+  // (isLeaderRef is declared near the dedup ledger above.)
+  useEffect(() => {
+    let release: (() => void) | undefined;
+    const abort = new AbortController();
+    navigator.locks
+      // Versioned name: bump it if this callback changes, or stale requests
+      // queued by already-open tabs (old code) can win the lock without
+      // setting isLeaderRef, leaving NO tab flushing.
+      ?.request("rta-dispatch-leader-v2", { signal: abort.signal }, () => {
+        isLeaderRef.current = true;
+        // Fresh countdown on taking over, so a newly elected tab doesn't flush
+        // instantly off a stale lastBatchAt.
+        setLastBatchAt(Date.now());
+        return new Promise<void>((r) => { release = r; });
+      })
+      .catch(() => {}); // AbortError on unmount while still waiting
+    return () => {
+      isLeaderRef.current = false;
+      abort.abort();
+      release?.();
+    };
+  }, []);
+
   // Batch countdown + auto-flush — ticks every second; flushes when the
   // configured interval elapses. Wall-clock relative to lastBatchAt (not
   // aligned to :00/:15/:30/:45) so the interval is genuinely configurable.
@@ -856,7 +989,7 @@ function App() {
       const elapsedMs = Date.now() - lastBatchAt;
       const remaining = Math.max(0, batchIntervalMinutes * 60 - Math.floor(elapsedMs / 1000));
       setSecondsUntilNextBatch(remaining);
-      if (remaining === 0) flushBatchRef.current();
+      if (remaining === 0 && isLeaderRef.current) flushBatchRef.current();
     }, 1000);
     return () => clearInterval(id);
   }, [lastBatchAt, batchIntervalMinutes]);
