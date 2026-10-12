@@ -51,7 +51,15 @@ export function groupByCycle(entries: DispatchEntry[]): DispatchBatch[] {
 // { cardsV2: [{ cardId: <generated server-side>, card: <this object> }] }.
 interface ChatCard {
   header: { title: string; subtitle?: string };
-  sections: { header?: string; widgets: { textParagraph: { text: string } }[] }[];
+  sections: {
+    header?: string;
+    collapsible?: boolean;
+    uncollapsibleWidgetsCount?: number;
+    widgets: (
+      | { textParagraph: { text: string } }
+      | { decoratedText: { text: string; bottomLabel?: string; wrapText?: boolean } }
+    )[];
+  }[];
 }
 
 // Confirmed live against the actual webhook, not assumed from docs:
@@ -129,9 +137,12 @@ export function buildGChatAlertBatchCard(
     .map((sev) => {
       const group = bySeverity.get(sev)!;
       const color = SEVERITY_COLOR[sev];
-      const lines = group.map((c, i) => {
+      // One collapsible decoratedText row per agent (bold name on top, detail as
+      // bottomLabel), plus the per-account extras: Verint skills, View shift /
+      // Day details links, and no "Please check.".
+      const widgets = group.map((c) => {
         // No roster name -> the name is already "Agent #<id>"; don't repeat the id.
-        const idSuffix = c.agent?.id && c.agent.name !== `Agent #${c.agent.id}` ? ` (#${c.agent.id})` : "";
+        const idSuffix = c.agent?.id && c.agent.name !== `Agent #${c.agent.id}` ? ` #${c.agent.id}` : "";
         const nameWithId = esc(`${c.agent?.name ?? c.title}${idSuffix}`);
         let detail = esc(stripNameEcho(c.draftMessage ?? c.summary ?? c.title));
         if (opts.omitPleaseCheck) detail = detail.replace(/\s*Please check\.?\s*$/i, "");
@@ -147,11 +158,14 @@ export function buildGChatAlertBatchCard(
           ? ` · <a href="${opts.verintBase}/wfo/control/peopleschedule_fs?selectedID=${id}">View shift</a>` +
             ` · <a href="${opts.verintBase}/wfo/control/viewtimerecord_fs?selectedID=${id}">Day details</a>`
           : "";
-        return `${i + 1}. ${boldName}${languageTag} — ${detail}${links}`;
+        // Links/skills live in `text` (supports <a>, wraps) — bottomLabel truncates.
+        return { decoratedText: { text: `${boldName}${languageTag}${links}`, bottomLabel: detail, wrapText: true } };
       });
       return {
         header: `${SEVERITY_EMOJI[sev]} ${SEVERITY_LABEL[sev]} (${group.length})`,
-        widgets: [{ textParagraph: { text: lines.join("<br>") } }],
+        collapsible: true,
+        uncollapsibleWidgetsCount: 0,
+        widgets,
       };
     });
 

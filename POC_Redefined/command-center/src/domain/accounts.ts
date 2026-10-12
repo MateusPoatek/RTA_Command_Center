@@ -131,6 +131,19 @@ export const ACCOUNT_CATALOG: Record<AccountId, AccountConfig> = {
     clockSystem: "GTT",
     clockSystemStatus: "not_started",
   },
+  HOTEL_PLANNER: {
+    id: "HOTEL_PLANNER",
+    label: "Hotel Planner",
+    verintUrl: "https://wfo.a87.verintcloudservices.com/wfo/ui/#wsm%5Bws%5D=wfmcal&qm_ctx%5Bts%5D=1790004808144",
+    // Top-level FA from FAvsID.csv, same rule as Zillow/CoreLogic/MyHeritage.
+    gttFunctionalArea: "FA_Hotel Planner",
+    gttSites: [],
+    timezone: "America/Toronto",
+    confirmed: false,
+    gttAvailable: true,
+    clockSystem: "GTT",
+    clockSystemStatus: "not_started",
+  },
 };
 
 /** GTT's own multi-site delimiter (see gtt_adapter.py's fetch_gtt docstring) — not our own parsing convention. */
