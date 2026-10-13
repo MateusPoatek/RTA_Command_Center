@@ -28,7 +28,7 @@ export function App() {
   const [fixtures] = useState<Data>(() => makeFixtures(Date.now()));
   const [live, setLive] = useState<VerintAgent[] | null>(null);
   const [screen, setScreen] = useState<"team" | "floor" | "reports" | "details">("floor");
-  const [detail, setDetail] = useState<"numbers" | "report" | "sources">("numbers");
+  const [detail, setDetail] = useState<"numbers" | "checks" | "sources" | "capture">("numbers");
   const [track, setTrack] = useState<Record<string, Track>>({});
   const [outage, setOutage] = useState<Set<string>>(new Set());
   const [tl, setTlState] = useState(() => { try { return localStorage.getItem("rta.tl") ?? ""; } catch { return ""; } });
@@ -230,15 +230,26 @@ export function App() {
       {screen === "details" && !wall && (
         <>
           <div className="subnav">
-            <button className={detail === "numbers" ? "on" : ""} onClick={() => setDetail("numbers")}>Numbers &amp; shrinkage breakdown</button>
-            <button className={detail === "report" ? "on" : ""} onClick={() => setDetail("report")}>Report Composition</button>
-            <button className={detail === "sources" ? "on" : ""} onClick={() => setDetail("sources")}>Data Sources</button>
+            <button className={detail === "numbers" ? "on" : ""} onClick={() => setDetail("numbers")}>Numbers &amp; funnel</button>
+            <button className={detail === "checks" ? "on" : ""} onClick={() => setDetail("checks")}>Data checks</button>
+            <button className={detail === "sources" ? "on" : ""} onClick={() => setDetail("sources")}>Data sources</button>
+            <button className={detail === "capture" ? "on" : ""} onClick={() => setDetail("capture")}>Capture</button>
           </div>
           {detail === "numbers" && <KpiStrip k={kpis} now={asOf} fresh={fresh} />}
-          {account && snap && detail === "numbers" && (
-            <div className="snap muted">{"file" in snap ? <>Snapshot saved {hhmm(snap.at)} → <code>POC_Redefined/{snap.file}</code> (and <code>{account.id}_latest.json</code>)</> : <span className="bad">Snapshot not saved: {snap.error}</span>}</div>
+          {detail === "checks" && <Report key={accountId} data={data} now={now} />}
+          {detail === "sources" && <Sources />}
+          {detail === "capture" && (
+            <div className="capture">
+              <ul>{fresh.map((f) => <li key={f.src}><b>{f.src}</b>: {f.text}</li>)}</ul>
+              {account ? (
+                <>
+                  <p><button onClick={() => bridgeSend("run-full-capture")}>Run Full Capture</button> <button onClick={() => bridgeSend("push-now")}>Ask the extension to push</button>
+                    <span className="muted"> Both need the Verint tab open with the RTA Live Bridge extension.</span></p>
+                  {snap && <p className="muted">{"file" in snap ? <>Snapshot saved {hhmm(snap.at)} → <code>POC_Redefined/{snap.file}</code> (and <code>{account.id}_latest.json</code>)</> : <span className="bad">Snapshot not saved: {snap.error}</span>}</p>}
+                </>
+              ) : <p className="muted">Demo uses sample data: pick an account to capture.</p>}
+            </div>
           )}
-          {detail === "report" ? <Report key={accountId} data={data} now={now} /> : detail === "sources" ? <Sources /> : null}
         </>
       )}
     </div>

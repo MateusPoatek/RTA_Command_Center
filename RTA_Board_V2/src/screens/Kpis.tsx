@@ -21,7 +21,7 @@ export function KpiStrip({ k, now, fresh }: { k: Kpis; now: number; fresh: Fresh
           </span>
         ))}
         {k.unpublished > 0 && (
-          <span className="mid" title="No published Verint schedule, so there is no base to measure attendance, productive time or shrinkage against. Filter them in Report Composition.">
+          <span className="mid" title="No published Verint schedule, so there is no base to measure attendance, productive time or shrinkage against. Filter them in Data checks.">
             {k.unpublished} agent(s) with unpublished schedule excluded from these numbers
           </span>
         )}

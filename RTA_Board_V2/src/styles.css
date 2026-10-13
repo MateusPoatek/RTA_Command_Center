@@ -121,6 +121,8 @@ td { padding: 4px 8px; border-bottom: 1px solid var(--line); }
 .fun-min .total td { font-weight: 700; border-top: 1px solid var(--line); }
 .caveats { margin: 10px 0 0; padding-left: 18px; line-height: 1.55; } .caveats li { margin-bottom: 4px; }
 .snap { font-size: 12px; padding: 6px 16px 0; max-width: 1200px; margin: 0 auto; }
+.capture, .reports { padding: 12px 16px; max-width: 1200px; margin: 0 auto; }
+.capture ul { padding-left: 18px; line-height: 1.7; }
 
 /* Team Lead: "which of my people need me now?" — one sentence, one button per row */
 .view { padding: 16px; max-width: 980px; margin: 0 auto; }

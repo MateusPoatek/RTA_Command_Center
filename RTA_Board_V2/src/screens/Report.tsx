@@ -1,4 +1,4 @@
-// Report composition: the daily attendance line per agent, assembled from GTT +
+// Data checks (Details tab): the daily attendance line per agent, assembled from GTT +
 // Verint + Workday, with a source chip on every cell. Click a cell to see its
 // lineage. The LOB rollup + "scorecard feed preview" is the shape that would be
 // written to the Scorecard instead of hand-typed collection files.
