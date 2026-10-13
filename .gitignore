@@ -118,3 +118,14 @@ Archive/
 /entities.json
 /mempalace.yaml
 *Transcript.md
+
+# Local business material (client data, contracts, notes) — never commit.
+# FAvsID.csv holds Workday IDs; the others are contracts, meeting notes, BRD/DEP drafts and the client SOP.
+Golden_Cluster_Calculations/
+POC_Redefined/Functional_Areas_and_WorkdayIDs/
+POC_Redefined/KPIs_BRD/
+POC_Redefined/DEP_Questionaire/
+POC_Redefined/Product_and_Architecture_docs_DOCX/
+POC_Redefined/verint_extension.backup-*/
+TELUS Digital - Epic Games*SOP.md
+*.visual-check.json
