@@ -8,6 +8,7 @@ one question per screen, one action per row, in TELUS Digital colours. No depend
 |---|---|---|
 | **My team** (Team Lead) | "Which of my people need me now?" Each row is one sentence ("Carlos Méndez is on Lunch — should be on New ticket · 22 min") with an **On it** button. Red = act now, grey = watch, minor alerts are a count. | [01 §4.2, §4.4], [02 §6, §8.3–8.4] |
 | **Floor** (RTA, also wall mode) | "Where is it burning, and which TL hasn't acted?" Headline numbers on one line, LOB incident banner, one row per TL (not seen yet / on it / escalated). A row opens that TL's screen. | [01 §4.4], [02 §9.1] |
+| **Reports** (RTA / WFM) | "What does the end-of-shift report say?" GTT × Verint reconciliation from `local_api.py` (`POST /generate-report` → `runs/reports/*.json`), with the Floor's own KPIs and alert outcomes. XLSX / PDF export, browser-side schedule, 30-min Chat digest. | [03 §6.3] |
 | **Details** (WFM) | How the numbers are made: KPI tiles + shrinkage funnel, Report Composition (provenance on every cell), Data Sources. | [03 §6.3], [04], [05] |
 
 ## Run

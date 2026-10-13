@@ -14,6 +14,9 @@ import { Floor } from "./screens/Floor";
 import type { Track } from "./domain/exceptions";
 import { Report } from "./screens/Report";
 import { Sources } from "./screens/Sources";
+import { Reports } from "./screens/Reports";
+import { useReports } from "./reports/useReports";
+import { buildAdherenceSummary } from "./reports/adherenceSummary";
 
 const GTT_POLL_MS = 5 * 60000;
 type Gtt = { state: "off" } | { state: "loading" } | { state: "error"; error: string } | { state: "live"; events: GttEvent[]; totalRows: number; at: number };
@@ -22,7 +25,7 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [fixtures] = useState<Data>(() => makeFixtures(Date.now()));
   const [live, setLive] = useState<VerintAgent[] | null>(null);
-  const [screen, setScreen] = useState<"team" | "floor" | "details">("floor");
+  const [screen, setScreen] = useState<"team" | "floor" | "reports" | "details">("floor");
   const [detail, setDetail] = useState<"numbers" | "report" | "sources">("numbers");
   const [track, setTrack] = useState<Record<string, Track>>({});
   const [outage, setOutage] = useState<Set<string>>(new Set());
@@ -126,6 +129,10 @@ export function App() {
     if (fresh.length) setTrack((t) => ({ ...t, ...Object.fromEntries(fresh.map((k) => [k, { ...t[k], sentAt: Date.now() }])) }));
   }, [direct.join()]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Reports send the raw extension rows for THIS account (local_api normalizes them itself).
+  const accountRows = useMemo(() => (raw?.rows ?? []).filter((r) => r.lob === accountId), [raw, accountId]);
+  const reports = useReports(account, accountRows);
+
   const ago = (t: number) => Math.max(0, Math.round((now - t) / 60000));
   const fresh: Freshness[] = !account
     ? (["Verint", "GTT", "Workday"] as const).map((src) => ({ src, text: "sample data" }))
@@ -152,6 +159,7 @@ export function App() {
         <nav>
           <button className={screen === "team" ? "on" : ""} onClick={() => setScreen("team")}>My team</button>
           <button className={screen === "floor" ? "on" : ""} onClick={() => setScreen("floor")}>Floor</button>
+          <button className={screen === "reports" ? "on" : ""} onClick={() => setScreen("reports")}>Reports</button>
           <button className={screen === "details" ? "on" : ""} onClick={() => setScreen("details")}>Details</button>
         </nav>
         <button onClick={() => { setWall((w) => !w); setScreen("floor"); }}>{wall ? "Exit wall mode" : "Wall mode"}</button>
@@ -172,6 +180,10 @@ export function App() {
         <Floor model={model} now={now} asOf={asOf} kpis={kpis} fresh={fresh} wall={wall} track={track} outage={outage}
           onOutage={(lob, on) => setOutage((s) => { const n = new Set(s); if (on) n.add(lob); else n.delete(lob); return n; })}
           onOpen={(t) => { setTl(t); setScreen("team"); }} />
+      )}
+      {screen === "reports" && !wall && (
+        <Reports account={account} r={reports} adherence={buildAdherenceSummary(model, track, roster, now)}
+          alertAgents={model.exceptions.map((e) => e.agent)} kpis={kpis} asOf={asOf} hasRoster={roster.length > 0} onDigest={() => {}} />
       )}
       {screen === "details" && !wall && (
         <>
