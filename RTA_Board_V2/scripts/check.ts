@@ -6,6 +6,9 @@ import { buildBoard, cfgFor, escalationLevel } from "../src/domain/exceptions";
 import { composeReport } from "../src/domain/report";
 import { computeKpis } from "../src/domain/kpis";
 import { looseNameMatch } from "../src/domain/join";
+import { summarizeTeams } from "../src/domain/exceptions";
+import type { Exception } from "../src/domain/exceptions";
+import { activity, displayName, lobLabel, sentence } from "../src/domain/wording";
 import { analyzeDay } from "../src/domain/timeline";
 
 const now = Date.parse("2026-10-09T15:00:00Z");
@@ -125,5 +128,43 @@ assert.deepStrictEqual(r.lobs.find((l) => l.lob === "EPIC - Payments")?.checks, 
   ], gtt: [], workday: [] };
   const kl = computeKpis(live, now, buildBoard(live, now));
   assert.deepStrictEqual([kl.funnel.lagged, kl.funnel.schedMin, kl.funnel.inShiftMin], [1, 105 + 120, 60]);
+}
+// A1 on real-capture shapes: Verint time off is not a late login; a missed, finished shift is a grey no-show
+{
+  const M = 60000;
+  const base = { lob: "EPIC", scheduledActivity: "x", actualActivity: "In Schedule", ooaSeconds: 0, adherencePct: 0, capturedAt: now, origin: "live" as const, scheduleState: "published" as const };
+  const live = { verint: [
+    { ...base, name: "Off, Fullday", scheduledStart: now - 60 * M, scheduledEnd: now + 540 * M, paidPlan: [], timeOff: [[now - 60 * M, now + 540 * M]] as Array<[number, number]> },
+    { ...base, name: "Gone, Allday", scheduledStart: now - 600 * M, scheduledEnd: now - 60 * M, paidPlan: [[now - 600 * M, now - 60 * M]] as Array<[number, number]> },
+    { ...base, name: "Late, Now", scheduledStart: now - 20 * M, scheduledEnd: now + 500 * M, paidPlan: [[now - 20 * M, now + 500 * M]] as Array<[number, number]> },
+  ], gtt: [], workday: [] };
+  const bl = buildBoard(live, now);
+  assert.deepStrictEqual(bl.suppressed.map((s) => [s.agent, s.reason]), [["Off, Fullday", "Time off in Verint"]]);
+  assert.deepStrictEqual(bl.exceptions.map((e) => [e.agent, e.kind, e.sev]), [["Late, Now", "no-clock-in", 1], ["Gone, Allday", "no-show", 2]]);
+}
+// plain wording for the floor
+{
+  assert.equal(displayName("Méndez, Carlos"), "Carlos Méndez");
+  assert.equal(activity("EPIC_New ticket"), "New ticket");
+  assert.equal(activity("Lunch +12m"), "Lunch");
+  assert.equal(lobLabel("EPIC - TISV · Player Support"), "TISV · Player Support");
+  const e = (kind: Exception["kind"], on: string, should: string) => ({ key: "k", kind, sev: 1, agent: "A", lob: "EPIC", tl: "T", on, should, minutes: 9, also: [] }) as Exception;
+  assert.equal(sentence(e("ooa", "EPIC_Lunch", "EPIC_New ticket")), "is on Lunch — should be on New ticket");
+  assert.equal(sentence(e("break-overrun", "Break +7m", "EPIC_New ticket")), "is still on Break — should be back on New ticket");
+  assert.equal(sentence(e("no-clock-in", "Not logged in", "x")), "hasn't clocked in — shift started");
+  assert.equal(sentence(e("no-clock-out", "Still clocked in (GTT)", "Shift ended")), "hasn't clocked out — shift ended");
+}
+// Floor: one row per TL, worst first; acking moves a team to "on it"; an unacked Sev 1 past 5 min escalates
+{
+  const rank = ["escalated", "not-seen", "watching", "on-it", "clear"];
+  const s0 = summarizeTeams(b, {}, now);
+  assert.ok(s0.every((t, i) => i === 0 || rank.indexOf(s0[i - 1].state) <= rank.indexOf(t.state)));
+  const hot = s0.find((t) => t.state === "not-seen")!;
+  const reds = b.exceptions.filter((e) => e.tl === hot.tl && e.lob === hot.lob && e.sev <= 2);
+  const acked = Object.fromEntries(reds.map((e) => [e.key, { ackAt: now }]));
+  assert.equal(summarizeTeams(b, acked, now).find((t) => t.tl === hot.tl && t.lob === hot.lob)!.state, "on-it");
+  const red = b.exceptions.find((e) => e.tl === hot.tl && e.lob === hot.lob && e.sev === 1)!;
+  const esc = summarizeTeams(b, { [red.key]: { sentAt: now - 6 * 60000 } }, now).find((t) => t.tl === hot.tl && t.lob === hot.lob)!;
+  assert.deepStrictEqual([esc.state, esc.level], ["escalated", 1]);
 }
 console.log("check ok:", b.exceptions.length, "exceptions,", r.lobs.map((l) => `${l.lob} ${l.confidence}%`).join(", "));

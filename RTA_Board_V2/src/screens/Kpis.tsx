@@ -58,6 +58,21 @@ export function KpiStrip({ k, now, fresh }: { k: Kpis; now: number; fresh: Fresh
   );
 }
 
+/** Floor: the headline numbers on one line; a source is mentioned only when it is late or missing. */
+export function KpiLine({ k, asOf, fresh }: { k: Kpis; asOf: number; fresh: Freshness[] }) {
+  const late = fresh.filter((f) => f.ageMin === undefined ? !/sample|not connected|none/.test(f.text) : f.ageMin > 15);
+  return (
+    <div className="kpiline" title="Details tab: how each number is calculated">
+      <b>As of {new Date(asOf).toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}</b>
+      <span>Attendance <b>{n(k.attendance.pct)}</b></span>
+      <span>Adherence <b>{n(k.adherence.pct)}</b></span>
+      <span>Shrinkage <b>{n(k.shrink.pct)}</b></span>
+      <span>Productive <b>{k.productive.hours}h</b></span>
+      {late.map((f) => <span key={f.src} className="stale">{f.src}: {f.text}</span>)}
+    </div>
+  );
+}
+
 const share = (a: number, b: number) => (b > 0 ? `${Math.round((100 * a) / b)}%` : "—");
 
 function FunnelPanel({ f, shrink }: { f: Funnel; shrink: number | null }) {

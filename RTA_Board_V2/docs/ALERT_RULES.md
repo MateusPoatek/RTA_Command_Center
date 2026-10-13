@@ -39,11 +39,14 @@ Each agent gets at most **one card**. The worst rule wins, and the others are li
 | ID | Alert | Trigger | Sev 3 | Sev 2 | Sev 1 | Source |
 |---|---|---|---|---|---|---|
 | A1 | Not clocked in | Past scheduled start, with no GTT `clock_in` and no Verint activity | — | ≥ 3 min | ≥ 10 min | [01 §4.4.2], [02 §8.2] |
+| A1b | No-show | A1 still true after the scheduled end: no clock-in or activity all shift. Grey, for the TL to explain (often a PTO not entered in Verint). Not counted toward A5. | — | always | — | capture 2026-10-09 |
 | A2 | Out of adherence | Verint actual ≠ scheduled, beyond a 5-min buffer | 5–14 min | 15–29 | ≥ 30 | [02 §8.2] ("30–75 min out of compliance") |
 | A3 | Break / lunch overrun | Still on a planned break that has ended, beyond the **4:59 waiver** | 5–9 min over | 10–29 over | ≥ 30 over | [01 §4.2, §4.4.2], [02 §8.2] |
 | A4 | Not clocked out | Past scheduled end + 5 min, still clocked in on GTT (no `clock_out`) | — | 5–29 min | ≥ 30 | [01 §1.2] (missed 2 pm logout seen at 6 pm), [02 §8.2] |
 | A5 | LOB incident | **≥ 5 agents and ≥ 20 %** of one LOB at Sev 1–2 at the same time | — | — | One incident alert to the LOB's TLs + Ops Manager. **It replaces the members' individual direct alerts** | [02 §8.3] |
 | A6 | Unmapped activity | Verint label not in the activity map (ANA's `#N/A`) | — | — | — | [ANA L150], [02 §1.6]. This is a data-quality chip **routed to WFM, not the TL** |
+
+A1 is suppressed when Verint publishes time off covering now (or a full-day time off with no paid shift). On the 2026-10-09 EPIC capture, 2 agents on full-day time off were wrongly alerted before this rule.
 
 ### Modifiers
 

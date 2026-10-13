@@ -1,12 +1,14 @@
 # RTA Board V2
 
 Fresh, deliberately small restart of the alerting UI, built from the Guatemala / El Salvador
-visit findings (`Debriefings/` [01], [02], [03]). Two screens, no dependencies beyond React.
+visit findings (`Debriefings/` [01], [02], [03]). KISS and "don't make me think": one screen per role,
+one question per screen, one action per row, in TELUS Digital colours. No dependencies beyond React.
 
-| Screen | Answers the RTA complaint | Source in the debriefs |
+| Screen | Question it answers | Source in the debriefs |
 |---|---|---|
-| **Alert Board** | "So many messages, they're ignored" → one board, only exceptions; direct alert only for critical | [01 §4.4], [02 §8.2–8.4, §9.1] |
-| **Report Composition** | "Hand-typed files, 81–85% confidence" → numbers assembled from GTT + Verint + Workday with provenance on every cell | [03 §6.3], [04], [05] |
+| **My team** (Team Lead) | "Which of my people need me now?" Each row is one sentence ("Carlos Méndez is on Lunch — should be on New ticket · 22 min") with an **On it** button. Red = act now, grey = watch, minor alerts are a count. | [01 §4.2, §4.4], [02 §6, §8.3–8.4] |
+| **Floor** (RTA, also wall mode) | "Where is it burning, and which TL hasn't acted?" Headline numbers on one line, LOB incident banner, one row per TL (not seen yet / on it / escalated). A row opens that TL's screen. | [01 §4.4], [02 §9.1] |
+| **Details** (WFM) | How the numbers are made: KPI tiles + shrinkage funnel, Report Composition (provenance on every cell), Data Sources. | [03 §6.3], [04], [05] |
 
 ## Run
 ```

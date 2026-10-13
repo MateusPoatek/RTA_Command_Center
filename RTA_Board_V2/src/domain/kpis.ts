@@ -34,7 +34,7 @@ export interface Kpis {
   funnel: Funnel;
 }
 
-const LABEL: Record<Kind, string> = { "no-clock-in": "Not clocked in", "no-clock-out": "Not clocked out", "break-overrun": "Break / lunch overrun", ooa: "" };
+const LABEL: Record<Kind, string> = { "no-clock-in": "Not clocked in", "no-clock-out": "Not clocked out", "break-overrun": "Break / lunch overrun", ooa: "", "no-show": "No-show (no activity, no clock-in)" };
 const pct = (a: number, b: number) => (b > 0 ? Math.round((1000 * a) / b) / 10 : null);
 const upTo = (sl: Array<[number, number]> | undefined, t: number, from = -Infinity) => (sl ?? []).reduce((m, [s, e]) => m + Math.max(0, Math.min(e, t) - Math.max(s, from)), 0) / 60000;
 

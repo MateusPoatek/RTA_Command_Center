@@ -7,7 +7,7 @@ import { clockIn, clockOut, joinAll } from "./join";
 import { analyzeDay } from "./timeline";
 
 export type Sev = 1 | 2 | 3;
-export type Kind = "no-clock-in" | "ooa" | "break-overrun" | "no-clock-out";
+export type Kind = "no-clock-in" | "ooa" | "break-overrun" | "no-clock-out" | "no-show";
 
 const DEFAULT = {
   startBufferMin: 3,     // A1 fires at 3 min past scheduled start
@@ -90,10 +90,16 @@ export function buildBoard(d: Data, now: number, outageLobs: ReadonlySet<string>
     const base = { agent: a.name, lob: a.lob, tl, also: [] as Kind[] };
     const hits: Exception[] = [];
 
-    // A1 — not clocked in
+    // A1 — not clocked in. Time off published in Verint is not a late login (2026-10-09 EPIC: 2 agents on a
+    // full-day time off were alerted). Once the shift is over it is no longer "act now": it becomes a no-show
+    // for the TL to explain (PTO not entered in Verint?), grey, not red.
     if (!started && a.scheduledStart && lateMin >= c.startBufferMin) {
       if (j.workday?.exception) { suppressed.push({ agent: a.name, reason: j.workday.exception }); continue; }
-      hits.push({ ...base, key: `${a.name}|no-clock-in`, kind: "no-clock-in", sev: sevBy(lateMin, c.critLateMin, 0), on: "Not logged in", should: a.scheduledActivity || "Shift start", minutes: lateMin });
+      const off = (a.timeOff ?? []).some(([s, e]) => s <= now && now < e) || (a.paidPlan?.length === 0 && !!a.timeOff?.length);
+      if (off) { suppressed.push({ agent: a.name, reason: "Time off in Verint" }); continue; }
+      if (a.scheduledEnd && now >= a.scheduledEnd)
+        hits.push({ ...base, key: `${a.name}|no-show`, kind: "no-show", sev: 2, on: "No activity all shift", should: "Shift", minutes: Math.round((a.scheduledEnd - a.scheduledStart) / MIN) });
+      else hits.push({ ...base, key: `${a.name}|no-clock-in`, kind: "no-clock-in", sev: sevBy(lateMin, c.critLateMin, 0), on: "Not logged in", should: a.scheduledActivity || "Shift start", minutes: lateMin });
     }
     // A4 — shift ended, still clocked in
     if (started && a.scheduledEnd && clockIn(j) !== undefined && clockOut(j) === undefined) {
@@ -126,7 +132,7 @@ export function buildBoard(d: Data, now: number, outageLobs: ReadonlySet<string>
   const incidents: Incident[] = [];
   for (const [lob, of] of Object.entries(lobSize)) {
     const c = cfgFor(lob);
-    const hot = exceptions.filter((e) => e.lob === lob && e.sev <= 2);
+    const hot = exceptions.filter((e) => e.lob === lob && e.sev <= 2 && e.kind !== "no-show"); // a no-show is not an outage
     if (hot.length >= c.incidentMinAgents && hot.length / of >= c.incidentMinShare) {
       incidents.push({ lob, agents: hot.length, of });
       hot.forEach((e) => (e.incident = true));
@@ -143,4 +149,35 @@ export function escalationLevel(c: Cfg, sentAt: number, now: number): 0 | 1 | 2 
   if (!c.escalation) return 0;
   const m = (now - sentAt) / 60000;
   return m > c.ackSlaMin + c.directorAfterMin ? 2 : m > c.ackSlaMin ? 1 : 0;
+}
+
+/** Per-alert follow-up state, shared by the Team Lead and Floor screens (in-memory in the POC). */
+export type Track = { sentAt?: number; ackAt?: number; reason?: string };
+
+export interface TeamSummary {
+  lob: string; tl: string; size: number;
+  red: number; grey: number; minor: number; // unacked Sev 1 / Sev 2 / Sev 3
+  acked: number;
+  oldest: number; // minutes, longest unacked red or grey
+  state: "escalated" | "not-seen" | "on-it" | "watching" | "clear";
+  level: 0 | 1 | 2; // escalation level of the worst unacked Sev 1
+}
+
+const RANK: Record<TeamSummary["state"], number> = { escalated: 0, "not-seen": 1, watching: 2, "on-it": 3, clear: 4 };
+
+/** One row per TL for the Floor: which teams need someone to act, worst first. */
+export function summarizeTeams(m: BoardModel, track: Record<string, Track>, now: number): TeamSummary[] {
+  return m.teams.map(({ lob, tl }) => {
+    const ex = m.exceptions.filter((e) => e.lob === lob && e.tl === tl);
+    const open = ex.filter((e) => !track[e.key]?.ackAt);
+    const red = open.filter((e) => e.sev === 1), grey = open.filter((e) => e.sev === 2);
+    const level = Math.max(0, ...red.map((e) => (track[e.key]?.sentAt ? escalationLevel(cfgFor(lob), track[e.key].sentAt!, now) : 0))) as 0 | 1 | 2;
+    const acked = ex.length - open.length;
+    const state = level ? "escalated" : red.length ? "not-seen" : grey.length ? "watching" : acked ? "on-it" : "clear";
+    return {
+      lob, tl, size: ex.length + (m.calm[`${lob}|${tl}`] ?? 0),
+      red: red.length, grey: grey.length, minor: open.filter((e) => e.sev === 3).length, acked,
+      oldest: Math.max(0, ...[...red, ...grey].filter((e) => e.kind !== "no-show").map((e) => e.minutes)), state, level,
+    } satisfies TeamSummary;
+  }).sort((x, y) => RANK[x.state] - RANK[y.state] || y.red + y.grey - (x.red + x.grey) || y.oldest - x.oldest);
 }

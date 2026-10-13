@@ -9,7 +9,9 @@ import { computeKpis } from "./domain/kpis";
 import { joinAll } from "./domain/join";
 import { KpiStrip } from "./screens/Kpis";
 import type { Freshness } from "./screens/Kpis";
-import { Board } from "./screens/Board";
+import { TeamLead } from "./screens/TeamLead";
+import { Floor } from "./screens/Floor";
+import type { Track } from "./domain/exceptions";
 import { Report } from "./screens/Report";
 import { Sources } from "./screens/Sources";
 
@@ -20,7 +22,12 @@ export function App() {
   const [now, setNow] = useState(() => Date.now());
   const [fixtures] = useState<Data>(() => makeFixtures(Date.now()));
   const [live, setLive] = useState<VerintAgent[] | null>(null);
-  const [screen, setScreen] = useState<"board" | "report" | "sources">("board");
+  const [screen, setScreen] = useState<"team" | "floor" | "details">("floor");
+  const [detail, setDetail] = useState<"numbers" | "report" | "sources">("numbers");
+  const [track, setTrack] = useState<Record<string, Track>>({});
+  const [outage, setOutage] = useState<Set<string>>(new Set());
+  const [tl, setTlState] = useState(() => { try { return localStorage.getItem("rta.tl") ?? ""; } catch { return ""; } });
+  const setTl = (t: string) => { setTlState(t); try { localStorage.setItem("rta.tl", t); } catch { /* private window */ } };
   const [wall, setWall] = useState(false);
   const [accountId, setAccountId] = useState("DEMO");
   const [gtt, setGtt] = useState<Gtt>({ state: "off" });
@@ -49,6 +56,8 @@ export function App() {
   // Account switch: tell the extension which LOB to capture, drop the old roster, fetch real GTT.
   useEffect(() => {
     setLive(null);
+    setTrack({});
+    setOutage(new Set());
     if (!account) return setGtt({ state: "off" });
     if (!account.gttFunctionalArea) return setGtt({ state: "off" });
     let stop = false;
@@ -104,6 +113,19 @@ export function App() {
     }).then((r) => r.json()).then((d) => setSnap(d.ok ? { at: Date.now(), file: d.file } : { error: d.error }))
       .catch(() => setSnap({ error: "local_api.py not reachable" }));
   }, [raw?.at, accountId, gtt.state]); // eslint-disable-line react-hooks/exhaustive-deps
+  // Alerts run on the wall clock (minutes keep counting between captures); KPIs above are as of the capture.
+  const model = useMemo(() => buildBoard(data, now, outage), [data, now, outage]);
+  const tls = useMemo(() => [...new Set(model.teams.map((t) => t.tl))].sort(), [model]);
+  const myTl = tls.includes(tl) ? tl : tls[0] ?? "";
+  const onTrack = (k: string, p: Track) => setTrack((t) => ({ ...t, [k]: { ...t[k], ...p } }));
+  // Sev 1 (outside a LOB incident) goes to the TL the moment it appears — nobody has to press "notify".
+  // ponytail: "sent" is in-memory; wire to Google Chat DMs + an ack endpoint for the pilot.
+  const direct = model.exceptions.filter((e) => e.sev === 1 && !e.incident).map((e) => e.key);
+  useEffect(() => {
+    const fresh = direct.filter((k) => !track[k]?.sentAt);
+    if (fresh.length) setTrack((t) => ({ ...t, ...Object.fromEntries(fresh.map((k) => [k, { ...t[k], sentAt: Date.now() }])) }));
+  }, [direct.join()]); // eslint-disable-line react-hooks/exhaustive-deps
+
   const ago = (t: number) => Math.max(0, Math.round((now - t) / 60000));
   const fresh: Freshness[] = !account
     ? (["Verint", "GTT", "Workday"] as const).map((src) => ({ src, text: "sample data" }))
@@ -121,17 +143,18 @@ export function App() {
   return (
     <div className={`app${wall ? " app--wall" : ""}`}>
       <header className="top">
+        <span className="wordmark">TELUS <i>Digital</i></span>
         <b className="brand">RTA Board</b>
         <select value={accountId} onChange={(e) => setAccountId(e.target.value)} aria-label="Account">
           <option value="DEMO">Demo (sample data)</option>
           {PILOT.map((a) => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select>
         <nav>
-          <button className={screen === "board" ? "on" : ""} onClick={() => setScreen("board")}>Alert Board</button>
-          <button className={screen === "report" ? "on" : ""} onClick={() => setScreen("report")}>Report Composition</button>
-          <button className={screen === "sources" ? "on" : ""} onClick={() => setScreen("sources")}>Data Sources</button>
+          <button className={screen === "team" ? "on" : ""} onClick={() => setScreen("team")}>My team</button>
+          <button className={screen === "floor" ? "on" : ""} onClick={() => setScreen("floor")}>Floor</button>
+          <button className={screen === "details" ? "on" : ""} onClick={() => setScreen("details")}>Details</button>
         </nav>
-        <button onClick={() => setWall((w) => !w)}>{wall ? "Exit wall mode" : "Wall mode"}</button>
+        <button onClick={() => { setWall((w) => !w); setScreen("floor"); }}>{wall ? "Exit wall mode" : "Wall mode"}</button>
       </header>
       {account && (
         <div className="notice">
@@ -142,11 +165,28 @@ export function App() {
           {gttOnly > 0 && <>{gttOnly} employee(s) clocked in on GTT are not in the Verint roster. </>}
         </div>
       )}
-      {screen !== "sources" && <KpiStrip k={kpis} now={asOf} fresh={fresh} />}
-      {account && snap && (
-        <div className="snap muted">{"file" in snap ? <>Snapshot saved {hhmm(snap.at)} → <code>POC_Redefined/{snap.file}</code> (and <code>{account.id}_latest.json</code>)</> : <span className="bad">Snapshot not saved: {snap.error}</span>}</div>
+      {screen === "team" && !wall && (
+        <TeamLead data={data} model={model} now={now} wall={wall} tl={myTl} tls={tls} onTl={setTl} track={track} onTrack={onTrack} />
       )}
-      {screen === "board" ? <Board key={accountId} data={data} now={now} wall={wall} /> : screen === "report" ? <Report key={accountId} data={data} now={now} /> : <Sources />}
+      {(screen === "floor" || wall) && (
+        <Floor model={model} now={now} asOf={asOf} kpis={kpis} fresh={fresh} wall={wall} track={track} outage={outage}
+          onOutage={(lob, on) => setOutage((s) => { const n = new Set(s); if (on) n.add(lob); else n.delete(lob); return n; })}
+          onOpen={(t) => { setTl(t); setScreen("team"); }} />
+      )}
+      {screen === "details" && !wall && (
+        <>
+          <div className="subnav">
+            <button className={detail === "numbers" ? "on" : ""} onClick={() => setDetail("numbers")}>Numbers &amp; shrinkage breakdown</button>
+            <button className={detail === "report" ? "on" : ""} onClick={() => setDetail("report")}>Report Composition</button>
+            <button className={detail === "sources" ? "on" : ""} onClick={() => setDetail("sources")}>Data Sources</button>
+          </div>
+          {detail === "numbers" && <KpiStrip k={kpis} now={asOf} fresh={fresh} />}
+          {account && snap && detail === "numbers" && (
+            <div className="snap muted">{"file" in snap ? <>Snapshot saved {hhmm(snap.at)} → <code>POC_Redefined/{snap.file}</code> (and <code>{account.id}_latest.json</code>)</> : <span className="bad">Snapshot not saved: {snap.error}</span>}</div>
+          )}
+          {detail === "report" ? <Report key={accountId} data={data} now={now} /> : detail === "sources" ? <Sources /> : null}
+        </>
+      )}
     </div>
   );
 }
