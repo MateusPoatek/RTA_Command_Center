@@ -10,6 +10,7 @@ import { summarizeTeams } from "../src/domain/exceptions";
 import type { Exception } from "../src/domain/exceptions";
 import { activity, displayName, lobLabel, sentence } from "../src/domain/wording";
 import { analyzeDay } from "../src/domain/timeline";
+import { alertCard, chatDue, escalationCard } from "../src/alerts/chat";
 
 const now = Date.parse("2026-10-09T15:00:00Z");
 const d = makeFixtures(now);
@@ -166,5 +167,27 @@ assert.deepStrictEqual(r.lobs.find((l) => l.lob === "EPIC - Payments")?.checks, 
   const red = b.exceptions.find((e) => e.tl === hot.tl && e.lob === hot.lob && e.sev === 1)!;
   const esc = summarizeTeams(b, { [red.key]: { sentAt: now - 6 * 60000 } }, now).find((t) => t.tl === hot.tl && t.lob === hot.lob)!;
   assert.deepStrictEqual([esc.state, esc.level], ["escalated", 1]);
+}
+// TL Alert System -> Google Chat: every new Sev 1 goes in one batch card naming its TL; posted ones are not
+// re-sent; an unacked one is posted again once per escalation level; Sev 2/3 never go one by one
+{
+  const due0 = chatDue(b, {}, now);
+  const sev1 = b.exceptions.filter((e) => e.sev === 1 && !e.incident);
+  assert.deepStrictEqual(due0.fresh.map((e) => e.key), sev1.map((e) => e.key));
+  assert.deepStrictEqual(due0.escalate, []);
+  const card = alertCard(due0.fresh, "Epic Games");
+  const text = card.sections[0].widgets[0].textParagraph.text;
+  assert.equal(text.split("<br>").length, sev1.length);
+  const soto = sev1.find((e) => e.agent.startsWith("Soto"))!;
+  assert.ok(text.includes(`<b>For ${soto.tl}:</b> ${displayName(soto.agent)} ${sentence(soto)} · ${soto.minutes} min`));
+  const posted = Object.fromEntries(sev1.map((e) => [e.key, { sentAt: now - 6 * 60000, chatAt: now - 5 * 60000 }]));
+  const due1 = chatDue(b, posted, now);
+  assert.deepStrictEqual(due1.fresh, []);
+  assert.deepStrictEqual(due1.escalate.map((x) => x.level), sev1.map(() => 1));
+  assert.equal(escalationCard(due1.escalate, "Epic Games").sections[0].header, "→ Ops Manager");
+  const lv1 = Object.fromEntries(sev1.map((e) => [e.key, { ...posted[e.key], chatLevel: 1 }]));
+  assert.deepStrictEqual(chatDue(b, lv1, now).escalate, []); // once per level
+  const ack = Object.fromEntries(sev1.map((e) => [e.key, { ...posted[e.key], ackAt: now - 60000 }]));
+  assert.deepStrictEqual(chatDue(b, ack, now).escalate, []); // "On it" stops it
 }
 console.log("check ok:", b.exceptions.length, "exceptions,", r.lobs.map((l) => `${l.lob} ${l.confidence}%`).join(", "));

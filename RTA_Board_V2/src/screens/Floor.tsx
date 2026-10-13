@@ -6,7 +6,7 @@ import type { Kpis } from "../domain/kpis";
 import { lobLabel } from "../domain/wording";
 import type { Freshness } from "./Kpis";
 import { KpiLine } from "./Kpis";
-import { LADDER } from "./TeamLead";
+import { LADDER } from "../domain/exceptions";
 
 interface Props {
   model: BoardModel; now: number; asOf: number; kpis: Kpis; fresh: Freshness[]; wall: boolean;

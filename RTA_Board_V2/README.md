@@ -34,6 +34,13 @@ A pilot account uses **real sources only**:
 - Join key is Workday ID. The extension roster carries none, so live rows join by name and the provenance
   drawer says so ("fuzzy — no ID in this source yet").
 
+## Google Chat (TL Alert System) — `src/alerts/chat.ts`
+Once a minute, new Sev 1 alerts go in one card per account ("For {TL}: {agent} {what} · N min"); an alert nobody
+pressed "On it" for is posted again once per escalation level (→ Ops Manager, → WFM Director). Sev 2 only goes in the
+30-min digest (Reports → Settings); Sev 3 is never sent. Delivery is `POST /api/dispatch-alert`, which uses the
+account's incoming webhook (`GCHAT_WEBHOOK_<ACCOUNT>` in `POC_Redefined/.env`). Without one the board says "simulated".
+An incoming webhook posts to the account's **space**, it cannot DM one TL, so every line names the TL.
+
 ## Rules — [docs/ALERT_RULES.md](docs/ALERT_RULES.md), code in `src/domain/exceptions.ts`
 Six alert types: A1 not clocked in, A2 out of adherence, A3 break overrun, A4 not clocked out, A5 LOB incident, A6 unmapped activity.
 Three severities: Sev 1 is a direct alert to the TL with escalation, Sev 2 goes in the TL digest, Sev 3 is board only.
@@ -44,6 +51,6 @@ Approved absences, trainees and declared outages are suppressed. Distilled from 
 The data lives in `src/data/lineage.ts`. `npm run export-lineage` renders the same data to a standalone HTML page.
 
 ## Deliberately not here (ponytail)
-Proactive alerts ([02] E13, P3) · real Chat delivery / ack endpoint (notify+ack are in-memory) ·
+Proactive alerts ([02] E13, P3) · Chat DMs to one TL (needs a Chat app) and ack from Chat (ack is on the board, in-memory) ·
 per-account rule config (constants in `CFG`) · auth/SSO · ServiceNow · scorecard write-back (the feed
 preview shows the shape only) · persistence.

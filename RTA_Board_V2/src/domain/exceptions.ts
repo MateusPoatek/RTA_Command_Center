@@ -152,7 +152,9 @@ export function escalationLevel(c: Cfg, sentAt: number, now: number): 0 | 1 | 2 
 }
 
 /** Per-alert follow-up state, shared by the Team Lead and Floor screens (in-memory in the POC). */
-export type Track = { sentAt?: number; ackAt?: number; reason?: string };
+export type Track = { sentAt?: number; ackAt?: number; reason?: string; chatAt?: number; chatLevel?: number }; // chat*: what Google Chat was told (alerts/chat.ts)
+
+export const LADDER = ["Team Lead", "Ops Manager", "WFM Director"];
 
 export interface TeamSummary {
   lob: string; tl: string; size: number;

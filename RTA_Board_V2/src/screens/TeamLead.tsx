@@ -4,13 +4,12 @@
 import { useState } from "react";
 import type { Data } from "../data/types";
 import type { BoardModel, Exception, Track } from "../domain/exceptions";
-import { cfgFor, escalationLevel } from "../domain/exceptions";
+import { LADDER, cfgFor, escalationLevel } from "../domain/exceptions";
 import { displayName, sentence } from "../domain/wording";
 import { Timeline } from "./Timeline";
 
 // ANA Bot SOP §4.1 valid reasons + the debrief's "approved, not in system"
 const REASONS = ["VPN issue", "GTT glitch", "Windows glitch", "Power / internet outage", "Hardware", "Long chat / call", "Approved, not in system", "Other"];
-export const LADDER = ["Team Lead", "Ops Manager", "WFM Director"];
 
 interface Props {
   data: Data; model: BoardModel; now: number; wall: boolean;

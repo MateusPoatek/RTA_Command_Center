@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { makeFixtures } from "./data/fixtures";
 import { bridgeSend, useBridge } from "./data/bridge";
 import type { RosterRow } from "./data/bridge";
@@ -17,6 +17,8 @@ import { Sources } from "./screens/Sources";
 import { Reports } from "./screens/Reports";
 import { useReports } from "./reports/useReports";
 import { buildAdherenceSummary } from "./reports/adherenceSummary";
+import { alertCard, chatDue, digestCard, dispatch, escalationCard } from "./alerts/chat";
+import type { ChatResult } from "./alerts/chat";
 
 const GTT_POLL_MS = 5 * 60000;
 type Gtt = { state: "off" } | { state: "loading" } | { state: "error"; error: string } | { state: "live"; events: GttEvent[]; totalRows: number; at: number };
@@ -122,7 +124,7 @@ export function App() {
   const myTl = tls.includes(tl) ? tl : tls[0] ?? "";
   const onTrack = (k: string, p: Track) => setTrack((t) => ({ ...t, [k]: { ...t[k], ...p } }));
   // Sev 1 (outside a LOB incident) goes to the TL the moment it appears — nobody has to press "notify".
-  // ponytail: "sent" is in-memory; wire to Google Chat DMs + an ack endpoint for the pilot.
+  // sentAt starts the escalation clock; the Google Chat post follows in the next one-minute batch (below).
   const direct = model.exceptions.filter((e) => e.sev === 1 && !e.incident).map((e) => e.key);
   useEffect(() => {
     const fresh = direct.filter((k) => !track[k]?.sentAt);
@@ -132,6 +134,43 @@ export function App() {
   // Reports send the raw extension rows for THIS account (local_api normalizes them itself).
   const accountRows = useMemo(() => (raw?.rows ?? []).filter((r) => r.lob === accountId), [raw, accountId]);
   const reports = useReports(account, accountRows);
+
+  // TL Alert System -> Google Chat (alerts/chat.ts). Once a minute: one card with that minute's new Sev 1s,
+  // one with escalations that rose a level. Sev 2 only goes in the 30-min digest; Sev 3 is never sent.
+  // The interval reads the latest state from a ref; it is marked as posted even when simulated, so no re-spam.
+  const [chat, setChat] = useState<ChatResult | null>(null);
+  const chatRef = useRef({ account, model, track, kpis, asOf, report: reports.report });
+  chatRef.current = { account, model, track, kpis, asOf, report: reports.report };
+  useEffect(() => {
+    setChat(null);
+    if (!account) return;
+    const id = setInterval(() => {
+      const { account: a, model: m, track: tr } = chatRef.current;
+      if (!a) return;
+      const t = Date.now();
+      const { fresh, escalate } = chatDue(m, tr, t);
+      if (!fresh.length && !escalate.length) return;
+      setTrack((cur) => {
+        const n = { ...cur };
+        for (const e of fresh) n[e.key] = { ...n[e.key], chatAt: t };
+        for (const { e, level } of escalate) n[e.key] = { ...n[e.key], chatLevel: level };
+        return n;
+      });
+      if (fresh.length) dispatch(a.id, alertCard(fresh, a.label), `${fresh.length} new alert(s)`).then(setChat);
+      if (escalate.length) dispatch(a.id, escalationCard(escalate, a.label), `${escalate.length} escalation(s)`).then(setChat);
+    }, 60000);
+    return () => clearInterval(id);
+  }, [accountId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const sendDigest = useCallback(() => {
+    const { account: a, model: m, track: tr, kpis: k, asOf: at, report } = chatRef.current;
+    if (a) dispatch(a.id, digestCard(m, tr, k, at, report, a.label), "digest").then(setChat);
+  }, []);
+  const digestOn = !!reports.config?.chatDigestEnabled;
+  useEffect(() => {
+    if (!digestOn) return;
+    const id = setInterval(sendDigest, 30 * 60000);
+    return () => clearInterval(id);
+  }, [digestOn, accountId, sendDigest]);
 
   const ago = (t: number) => Math.max(0, Math.round((now - t) / 60000));
   const fresh: Freshness[] = !account
@@ -173,6 +212,9 @@ export function App() {
           {gttOnly > 0 && <>{gttOnly} employee(s) clocked in on GTT are not in the Verint roster. </>}
         </div>
       )}
+      {account && chat && !wall && screen !== "details" && (
+        <div className="snap muted">Google Chat · {hhmm(chat.at)} · {chat.what}: {chat.ok ? "posted to the account's space" : chat.error?.includes("simulated") ? "simulated: no webhook set for this account" : <span className="bad">not posted ({chat.error})</span>}</div>
+      )}
       {screen === "team" && !wall && (
         <TeamLead data={data} model={model} now={now} wall={wall} tl={myTl} tls={tls} onTl={setTl} track={track} onTrack={onTrack} />
       )}
@@ -183,7 +225,7 @@ export function App() {
       )}
       {screen === "reports" && !wall && (
         <Reports account={account} r={reports} adherence={buildAdherenceSummary(model, track, roster, now)}
-          alertAgents={model.exceptions.map((e) => e.agent)} kpis={kpis} asOf={asOf} hasRoster={roster.length > 0} onDigest={() => {}} />
+          alertAgents={model.exceptions.map((e) => e.agent)} kpis={kpis} asOf={asOf} hasRoster={roster.length > 0} onDigest={sendDigest} />
       )}
       {screen === "details" && !wall && (
         <>
