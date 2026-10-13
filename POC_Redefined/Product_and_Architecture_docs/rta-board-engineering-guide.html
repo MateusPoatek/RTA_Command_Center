@@ -476,17 +476,21 @@ flowchart TD
 <tr><td>Productive includes paid breaks</td><td>Shrinkage is understated until the contract definition is agreed.</td><td>Agree the definition with operations. Both paid and work minutes are already captured.</td></tr>
 <tr><td>Window start is estimated</td><td>It is the earliest Verint shift start. It can be wrong on a day with few starts.</td><td>Send the real window start from the extension.</td></tr>
 <tr><td>30-minute lag threshold</td><td>It comes from one capture. Another tenant may post at a different pace.</td><td>Tune it on more captures.</td></tr>
-<tr><td>TL identity</td><td>The TL is the GTT supervisor. There is no login.</td><td>Add sign-in and a TL directory.</td></tr>
-<tr><td>Chat delivery</td><td>The Google Chat incoming webhook posts to the account's space. It cannot message one TL.</td><td>Build a Chat app for direct messages.</td></tr>
+<tr><td>TL identity</td><td>The TL is the GTT supervisor, from today's GTT plus a 3-day TL directory. There is no login.</td><td>Sign-in through IAP and Google Workspace (see the GCP architecture below).</td></tr>
+<tr><td>Chat delivery</td><td>The Google Chat incoming webhook posts to the account's space. It cannot message one TL.</td><td>Build a Google Chat app for direct messages (see the GCP architecture below).</td></tr>
 <tr><td>Browser dependency</td><td>Capture needs an RTA's logged-in browser. Full Capture reads the whole floor.</td><td>Server-side Verint access, with one census and per-account pulls. Skip chunks for other organizations first.</td></tr>
 <tr><td>Acknowledgements in memory</td><td>A reload clears them. Nothing is written back to a store.</td><td>Persist acknowledgements and reasons. They become tuning data.</td></tr>
 </tbody></table></div>
+
+<p><strong>Next:</strong> how production on Google Cloud closes these gaps is in <a href="https://claude.ai/artifact/3nw4y6dYgCQqaYdJvpEygW">Epic Games GCP Architecture</a>. Where AI agents help, and where the core stays deterministic, is in <a href="https://claude.ai/artifact/TLp97Pbi9S8DUasVdHCRVo">Epic Games Agentic Layer</a>.</p>
 
 <h2 id="refs">10. References</h2>
 <p>All paths are relative to the repository root.</p>
 <div class="refs">
 <h3>Documents</h3>
 <ul>
+<li><a href="https://claude.ai/artifact/3nw4y6dYgCQqaYdJvpEygW">Epic Games GCP Architecture</a> (<code>POC_Redefined/Product_and_Architecture_docs/epic-games-gcp-architecture.html</code>)</li>
+<li><a href="https://claude.ai/artifact/TLp97Pbi9S8DUasVdHCRVo">Epic Games Agentic Layer</a> (<code>POC_Redefined/Product_and_Architecture_docs/epic-games-agentic-layer.html</code>)</li>
 <li><code>RTA_Board_V2/docs/ALERT_RULES.md</code></li>
 <li><code>RTA_Board_V2/docs/BACKLOG.md</code></li>
 <li><code>RTA_Board_V2/README.md</code></li>

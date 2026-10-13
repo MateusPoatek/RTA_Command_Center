@@ -1,0 +1,344 @@
+<title>Epic Games Agentic Layer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FCFDFB;--panel:#FFFFFF;--alt:#F2F3ED;--line:#DEE0D9;
+  --text:#222220;--muted:#595956;
+  --head:#4B286D;--band:#4B286D;--band-text:#FFFFFF;--band-muted:#E4D9EE;
+  --accent:#007F4A;--accent-thin:#66CC00;--good-bg:#E6F4EC;
+  --bad:#c0392b;--bad-bg:#FBEAE8;
+  --code-bg:#F2F3ED;--focus:#4B286D;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+    --text:#ECEAF0;--muted:#B0AAB9;
+    --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+    --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+    --bad:#FF7B6B;--bad-bg:#3A1B19;
+    --code-bg:#241E2E;--focus:#CDB4EA;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+  --text:#ECEAF0;--muted:#B0AAB9;
+  --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+  --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+  --bad:#FF7B6B;--bad-bg:#3A1B19;
+  --code-bg:#241E2E;--focus:#CDB4EA;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.6}
+.band{background:var(--band);color:var(--band-text);border-bottom:4px solid var(--accent-thin);padding-block:28px;padding-inline:16px}
+.band-in,.wrap{max-width:1000px;margin-inline:auto}
+.band h1{margin:0 0 6px;font-size:clamp(1.6rem,5vw,2.2rem);line-height:1.15;color:var(--band-text);text-wrap:balance}
+.band p{margin:0;color:var(--band-muted);max-width:70ch}
+.wrap{padding-inline:16px;padding-block:24px 64px}
+h2{color:var(--head);font-size:1.6rem;line-height:1.2;margin:48px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line);text-wrap:balance;scroll-margin-top:12px}
+h3{color:var(--head);font-size:1.15rem;margin:28px 0 8px;text-wrap:balance}
+p,li{max-width:72ch}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:1.3em}
+li{margin-bottom:4px}
+a{color:var(--accent)}
+a:focus-visible,summary:focus-visible,.scroll:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+code,pre{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px;font-size:.86em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.scroll table{border:0;margin:0}
+table{border-collapse:collapse;width:100%;font-size:.92rem;min-width:560px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--alt);color:var(--head);font-weight:700;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td,th{font-variant-numeric:tabular-nums}
+pre.mermaid{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto;margin:0 0 18px;font-size:.85rem;line-height:1.4}
+pre.formula{background:var(--code-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:12px 14px;overflow-x:auto;margin:0 0 14px;font-size:.85rem;line-height:1.5;white-space:pre}
+.glance{background:var(--good-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.glance h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.glance ul{margin:0}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.toc h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.toc ol{columns:2 260px;column-gap:28px;margin:0}
+.toc li{break-inside:avoid}
+.note{background:var(--alt);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:0 0 16px}
+.note.warn{border-left:4px solid var(--bad);background:var(--bad-bg)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--alt);color:var(--muted);vertical-align:middle}
+.tag.live{color:var(--accent);border-color:var(--accent)}
+.tag.plan{color:var(--bad);border-color:var(--bad)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:6px;padding:14px 16px;min-width:0}
+.card h3{margin:0 0 8px;font-size:1.05rem}
+.card dl{margin:0}
+.card dt{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-top:8px}
+.card dd{margin:0;overflow-wrap:anywhere}
+.card dt.bad{color:var(--bad)}
+.refs code{display:inline-block}
+footer{color:var(--muted);font-size:.85rem;margin-top:40px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+<header class="band"><div class="band-in">
+<h1>Epic Games Agentic Layer</h1>
+<p>A proposal for a small set of AI agents on top of the Epic Games RTA solution, built on Google's agent platform, and a clear list of where AI is not used.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="glance">
+<h2 id="summary">Summary</h2>
+<p>The RTA solution captures workforce data, joins it, applies alert rules and computes KPIs. Almost all of that is deterministic on purpose. We propose six advisory agents on top, where the input is language or where the work is investigation. They are delivered to employees through Gemini Enterprise and built with Google's agent tooling. This page is as clear about where we do not use AI as about where we do.</p>
+<ul>
+<li>The deterministic core stays deterministic: capture, join, alert rules, KPI math, dispatch and report numbers.</li>
+<li>Gemini Enterprise is the employee-facing front door for a few advisory, read-only agents, grounded on data the core already produces.</li>
+<li>Nothing an agent says changes a KPI, an alert, a dispatch or a schedule. Agents hold no write credentials (AC-001).</li>
+<li>Every agent has a named human checkpoint and a success metric we can measure. We start with the two lowest-risk agents.</li>
+</ul>
+</div>
+
+<div class="note warn"><strong>Confirm with Google.</strong> Product names, editions, features and limits in this page reflect public information as of writing (2026). They are our understanding, not a commitment. Section 8 lists what we ask Google to confirm.</div>
+
+<nav class="toc" aria-label="Contents">
+<h2>Contents</h2>
+<ol>
+<li><a href="#rubric">The rubric: when AI, when not</a></li>
+<li><a href="#deterministic">What stays deterministic, and why</a></li>
+<li><a href="#agents">Where agents make sense</a></li>
+<li><a href="#arch">Reference architecture</a></li>
+<li><a href="#guardrails">Guardrails</a></li>
+<li><a href="#phasing">Phasing</a></li>
+<li><a href="#asks">Asks for the Google team</a></li>
+<li><a href="#appendix">Appendix: engineering detail</a></li>
+<li><a href="#refs">References</a></li>
+</ol>
+</nav>
+
+<h2 id="rubric">1. The rubric: when AI, when not</h2>
+<p>We use one rule set for every capability. A capability must pass the left column and hit none of the right column to get an agent.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Use an agent when&hellip;</th><th>Never use an agent when&hellip;</th></tr></thead>
+<tbody>
+<tr><td>The input is unstructured language (questions, SOP text, free-text reasons, discovery notes).</td><td>The output is a number someone is paid, billed or scored on.</td></tr>
+<tr><td>The output is advisory: an answer, a draft, a suggestion.</td><td>The result is a rule that must be explainable and auditable. The same input must always give the same output.</td></tr>
+<tr><td>A human reviews the output before anything happens.</td><td>The step acts on an external system: sends, posts, writes, schedules or changes a setting.</td></tr>
+<tr><td>An error is cheap and visible, and the answer can cite its source rows.</td><td>A wrong answer would be hard to notice or expensive to undo.</td></tr>
+</tbody></table></div>
+
+<h3>The rubric applied</h3>
+<p>Every capability in this proposal, with its verdict. "Agent later" means the idea is sound but deferred on purpose (section 3).</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Capability</th><th>Input type</th><th>Output used for</th><th>Human checkpoint</th><th>Verdict</th></tr></thead>
+<tbody>
+<tr><td>Verint and GTT capture</td><td>Structured API and browser responses</td><td>Source data for everything</td><td>Data checks on the Details screen</td><td>Deterministic</td></tr>
+<tr><td>GTT and Verint join</td><td>Structured names and IDs</td><td>Who is present</td><td>Join-rate check</td><td>Deterministic</td></tr>
+<tr><td>Alert rules A1&ndash;A6, severities, escalation timing</td><td>Structured events</td><td>Who is alerted and when</td><td>TL presses "On it"</td><td>Deterministic</td></tr>
+<tr><td>KPI and shrinkage formulas</td><td>Structured minutes</td><td>Scorecard and finance inputs</td><td>WFM review</td><td>Deterministic</td></tr>
+<tr><td>Dispatch and routing</td><td>Alert records</td><td>Messages in Google Chat</td><td>Opt-in per account</td><td>Deterministic</td></tr>
+<tr><td>Report numbers</td><td>KPI and reconciliation JSON</td><td>Numbers in the shift report</td><td>WFM review</td><td>Deterministic</td></tr>
+<tr><td>1. Floor Q&amp;A</td><td>Natural-language question plus KPI history</td><td>An answer with row citations</td><td>The asker reads the cited rows</td><td>Agent</td></tr>
+<tr><td>2. Shift-report narrative</td><td>Deterministic report JSON</td><td>Prose around fixed numbers</td><td>WFM reads before the report goes out</td><td>Agent</td></tr>
+<tr><td>3. Data-quality investigator</td><td>Invariant-break events plus diagnostics</td><td>A drafted engineering ticket</td><td>An engineer files or discards it</td><td>Agent</td></tr>
+<tr><td>4. Account-onboarding assistant</td><td>Discovery notes and sample data</td><td>A draft tenant manifest</td><td>Engineer approves the manifest</td><td>Agent</td></tr>
+<tr><td>5. SOP and rules Q&amp;A</td><td>Natural-language question plus SOP text</td><td>An answer with document citations</td><td>The TL can open the source passage</td><td>Agent</td></tr>
+<tr><td>6. "Other" reason normaliser</td><td>Free-text On-it reasons</td><td>A suggested SOP category</td><td>WFM accepts or rejects the suggestion</td><td>Agent</td></tr>
+<tr><td>LLM-suggested matches for the join residue</td><td>Unresolved names</td><td>Candidate matches</td><td>Human must confirm each one</td><td>Agent later</td></tr>
+<tr><td>Proactive or predictive alerting</td><td>Trends and forecasts</td><td>Alerts nobody asked for</td><td>Not defined yet</td><td>Agent later</td></tr>
+</tbody></table></div>
+
+<h2 id="deterministic">2. What stays deterministic, and why</h2>
+<p>These parts produce numbers and decisions that people act on. They must be exact, reproducible and explainable. Each row links to the lesson in the engineering guide (<code>POC_Redefined/Product_and_Architecture_docs/rta-board-engineering-guide.html#lessons</code>) that shows why. The lessons were found by hand. That is the reason to keep the core as code and test it.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Part</th><th>Why it stays deterministic</th><th>Guide lesson</th></tr></thead>
+<tbody>
+<tr><td>Capture (Verint, GTT)</td><td>Capture reads structured responses. The hard problems were scope and timing, not language. Reading a screen with vision is outside the governance envelope (AC-006). A model cannot fix a capture window it cannot see.</td><td>3 (capture window), 6 (whole-floor capture)</td></tr>
+<tr><td>GTT and Verint join</td><td>An exact key first, then a loose match that must be unique and share at least 2 words. It matched 87 of 87 clock-ins. A model that guesses could silently put the wrong person on a wrong alert. The Workday ID will replace the loose match.</td><td>7 (name join)</td></tr>
+<tr><td>Alert rules A1&ndash;A6, severities, escalation timing</td><td>A TL must be able to ask "why did I get this?" and get a rule and a threshold. Escalation at 5 and 15 minutes is a policy, not a prediction. False alerts erode trust, so every suppression case must be explicit and testable.</td><td>8 (time off and no-shows), 1 (unpublished schedules), 5 (posting lag)</td></tr>
+<tr><td>KPI and shrinkage formulas</td><td>Every KPI is a ratio of sums, measured as of the capture time. These feed the scorecard and headcount. The posting-lag and capture-window fixes moved shrinkage from 14.8% to 9.3% and from 49% to 9.8%. Math like that must be exact and reproducible, so a model never computes or rounds it.</td><td>2 (unpaid lunch), 3, 4 (wall-clock creep), 5</td></tr>
+<tr><td>Dispatch and routing</td><td>Sending a message to a person is an action on an external system. Delivery follows fixed rules: Sev 1 to the TL, Sev 2 in a digest, once per escalation level, retry on server errors. No agent holds a send credential (AC-001).</td><td>8 (false alerts), plus the delivery rules in guide section 5</td></tr>
+<tr><td>Report numbers</td><td>The report is a record that WFM and the client read. Numbers come from the reconciler and are written once. An agent may write the words around them (agent 2), never the figures.</td><td>4, 5 (numbers must hold still between captures)</td></tr>
+</tbody></table></div>
+<div class="note"><strong>The principle.</strong> Where the cost of a wrong answer is a wrong paycheque, a wrong alert or a wrong invoice, we use code and tests. Where the cost of a wrong answer is a re-read, we can use an agent.</div>
+
+<h2 id="agents">3. Where agents make sense</h2>
+<p>Six candidates, in the order we would build them. All tools are read-only. Each agent is a custom agent built with the Agent Development Kit (ADK, Google's open-source framework for building agents) and run on Vertex AI Agent Engine (Google's managed runtime for agents). Employees reach them through Gemini Enterprise (Google's enterprise AI platform and the successor to Google Agentspace).</p>
+
+<div class="cards">
+
+<div class="card"><h3>1. Floor Q&amp;A for RTAs, WFM and Ops</h3><dl>
+<dt>Problem</dt><dd>Answers to "what happened on the floor?" need a person to dig through the Details screen and reports.</dd>
+<dt>Agent</dt><dd>A Gemini Enterprise agent that answers questions about KPI history and reports. Example: "why did Payments shrinkage rise after 14:00?"</dd>
+<dt>Tools (read-only)</dt><dd>Read-only BigQuery views through a BigQuery data agent or MCP Toolbox for Databases (an open-source MCP server for databases). Report files in Cloud Storage.</dd>
+<dt>Human checkpoint</dt><dd>The asker. Every answer shows the rows it used.</dd>
+<dt>Guardrails</dt><dd>Tokenised names and IDs. Numbers are quoted from rows, never calculated by the model. "I do not have data for that" is an accepted answer. Model Armor screens prompts and responses.</dd>
+<dt>Success metric (to measure)</dt><dd>Share of answers with row citations. Share of golden questions answered correctly. Share of answers where a reviewer finds an uncited number.</dd>
+</dl></div>
+
+<div class="card"><h3>2. Shift-report narrative</h3><dl>
+<dt>Problem</dt><dd>The report has the numbers. Reading them into a summary for the client takes WFM time every shift.</dd>
+<dt>Agent</dt><dd>Writes prose only, around deterministic numbers in the report JSON. A number validator rejects any figure not present in the source.</dd>
+<dt>Tools (read-only)</dt><dd>The report JSON for one account and day. Prior-day report for comparison.</dd>
+<dt>Human checkpoint</dt><dd>WFM reads and approves the narrative before the report is released.</dd>
+<dt>Guardrails</dt><dd>Validator runs outside the model. A draft that fails is not shown; the report ships with the standard rule-based text. Names are tokenised.</dd>
+<dt>Success metric (to measure)</dt><dd>Share of drafts that pass the validator first time. Share of drafts WFM accepts without edits. Minutes of WFM time per report.</dd>
+</dl></div>
+
+<div class="card"><h3>3. Data-quality investigator</h3><dl>
+<dt>Problem</dt><dd>When a number looks wrong, an engineer repeats the checks we did by hand for the eight lessons.</dd>
+<dt>Agent</dt><dd>Triggered when an invariant breaks: a shrinkage jump between captures, a join-rate drop, a foreign organization in the capture, a roster versus GTT gap. It runs read-only diagnostics and drafts a ticket.</dd>
+<dt>Tools (read-only)</dt><dd>Diagnostic queries over BigQuery views: capture census, join log, funnel counts, posting-lag distribution. No access to raw payloads.</dd>
+<dt>Human checkpoint</dt><dd>An engineer reads the draft ticket and files, edits or discards it.</dd>
+<dt>Guardrails</dt><dd>It drafts only. It does not fix data, change a threshold or restart anything. The ticket must list the queries it ran.</dd>
+<dt>Success metric (to measure)</dt><dd>Share of past incidents it identifies the right cause for, on the golden set. Share of tickets engineers keep. Time from trigger to a usable draft.</dd>
+</dl></div>
+
+<div class="card"><h3>4. Account-onboarding assistant</h3><dl>
+<dt>Problem</dt><dd>Each new account needs a tenant manifest: Verint organization pattern, GTT functional area and sites, clock system, time zone. Engineer time per account drives the cost model (4 accounts per engineer).</dd>
+<dt>Agent</dt><dd>Reads discovery notes and sample captures and drafts the manifest, with a note on every field it is unsure about.</dd>
+<dt>Tools (read-only)</dt><dd>Discovery documents, the manifest schema, the census of Verint organization names for the account.</dd>
+<dt>Human checkpoint</dt><dd>An engineer reviews and approves. The manifest goes through the normal pull request and deploy path (AC-003).</dd>
+<dt>Guardrails</dt><dd>Output must validate against the manifest schema. The agent has no access to the deploy pipeline. Regex patterns are tested on the census before approval.</dd>
+<dt>Success metric (to measure)</dt><dd>Fields accepted without change. Engineer minutes per onboarding versus today.</dd>
+</dl></div>
+
+<div class="card"><h3>5. SOP and rules Q&amp;A for Team Leads</h3><dl>
+<dt>Problem</dt><dd>TLs ask "what do I do for this alert?" or "why am I seeing this?" and the answer is in documents they do not open.</dd>
+<dt>Agent</dt><dd>Gemini Enterprise search over the ANA SOP, the alert rules and the engineering guide. Answers with quotes and links.</dd>
+<dt>Tools (read-only)</dt><dd>Document index only. No operational data.</dd>
+<dt>Human checkpoint</dt><dd>The TL can open the source passage. The SOP stays the authority.</dd>
+<dt>Guardrails</dt><dd>It explains rules; it never overrides them or changes a severity. It answers only from the indexed documents.</dd>
+<dt>Success metric (to measure)</dt><dd>Share of answers with a document citation. Share of golden questions answered correctly. TL feedback on usefulness.</dd>
+</dl></div>
+
+<div class="card"><h3>6. "Other" reason normaliser</h3><dl>
+<dt>Problem</dt><dd>When a TL presses "On it" and picks "Other", the reason is lost to analysis. The board offers only fixed reasons today; this agent needs a free-text box after "Other" (a small board change, planned with it).</dd>
+<dt>Agent</dt><dd>Maps free-text reasons to the SOP categories as a suggestion.</dd>
+<dt>Tools (read-only)</dt><dd>The list of free-text reasons and the SOP category list.</dd>
+<dt>Human checkpoint</dt><dd>WFM accepts or rejects each suggestion in a review list.</dd>
+<dt>Guardrails</dt><dd>A reason explains an alert. It never reclassifies it for the scorecard, and neither does this agent. The suggestion is stored beside the original text, never over it.</dd>
+<dt>Success metric (to measure)</dt><dd>Share of suggestions WFM accepts. Share of "other" reasons that fit an existing category.</dd>
+</dl></div>
+
+</div>
+
+<h3>Deferred on purpose</h3>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Idea</th><th>Why we wait</th></tr></thead>
+<tbody>
+<tr><td>An LLM suggests matches for the unresolved join residue</td><td>The deterministic join already matched 87 of 87 in the reviewed capture, and the Workday ID is the planned key. If a residue remains, a model could suggest candidates and a human would confirm each one. Revisit after Workday.</td></tr>
+<tr><td>Proactive or predictive alerting</td><td>It moves an agent from advising to acting on people. We have no baseline for accuracy and it touches the alert rules. Revisit only after phases 1 to 3 give us measured trust.</td></tr>
+</tbody></table></div>
+
+<h2 id="arch">4. Reference architecture</h2>
+<p>Agents sit beside the core, not inside it. The only connection is a one-way read through tokenised, read-only views. Model Armor (Google's service that screens prompts and responses for injection and sensitive data) sits in front of the agents. Everything runs inside a VPC Service Controls perimeter (VPC-SC, Google's data-exfiltration boundary).</p>
+<pre class="mermaid">
+flowchart LR
+  U["Employees: RTA, WFM, Ops, TL"] --> GE["Gemini Enterprise (front door)"]
+  subgraph PERIM["VPC-SC perimeter"]
+    GE --> MA["Model Armor (screen prompts and responses)"]
+    MA --> AG["Custom agents (ADK on Vertex AI Agent Engine)"]
+    AG --> MCP["MCP tools (read-only)"]
+    MCP --> BQ["BigQuery views (tokenised, read-only)"]
+    MCP --> GCS["Cloud Storage reports (read-only)"]
+    AG --> LOG["Audit log: prompts, responses, tool calls"]
+    subgraph CORE["Deterministic core: no agent code, no agent access"]
+      CAP["Capture"] --> JOIN["Join"]
+      JOIN --> RULES["Alert rules and KPIs"]
+      RULES --> DISP["Dispatch"]
+    end
+    RULES -->|"writes views"| BQ
+    RULES -->|"writes reports"| GCS
+  end
+</pre>
+<p>Read the diagram this way.</p>
+<ul>
+<li>The core writes the views and the reports. The agents' tools can only read them.</li>
+<li>There is no arrow from any agent to capture, alert rules, KPIs or dispatch. That missing arrow is the design: agents cannot reach the core.</li>
+<li>The LLM sits behind a backend proxy and is a swappable seam (AC-004). Gemini is the first choice here. The seam stays in place so another model can be used if needed.</li>
+<li>Names and IDs are tokenised before data reaches any view the agents read. De-tokenisation happens only at the user interface, for users who may see names.</li>
+</ul>
+
+<h3>Shift-report narrative with the number validator</h3>
+<pre class="mermaid">
+sequenceDiagram
+  participant R as Report JSON (deterministic)
+  participant A as Narrative agent
+  participant V as Number validator (code)
+  participant W as WFM reviewer
+  R->>A: read figures
+  A->>V: draft text
+  V->>V: every number must exist in the JSON
+  alt all numbers found
+    V->>W: draft for review
+    W->>W: approve or edit
+  else any number not found
+    V->>W: standard rule-based text instead
+  end
+</pre>
+
+<h2 id="guardrails">5. Guardrails</h2>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Guardrail</th><th>What it means</th></tr></thead>
+<tbody>
+<tr><td>No write credentials</td><td>The agents' service identity has read-only IAM on views and report files. It has no send, publish, write or deploy role (AC-001). No AI write path exists.</td></tr>
+<tr><td>Tokenisation at the edge</td><td>Names and employee IDs are replaced by tokens before any LLM call. De-tokenisation happens only in the user interface, for permitted users. Raw capture payloads are already dropped after normalisation.</td></tr>
+<tr><td>Swappable model seam</td><td>The LLM endpoint is backend-proxied and swappable (AC-004). The key never reaches a browser.</td></tr>
+<tr><td>Model Armor</td><td>Prompts and responses are screened for injection and sensitive data before and after the model.</td></tr>
+<tr><td>Audit trail</td><td>Prompts, responses and tool calls are logged to the write-once audit store, with the same 90-day-plus retention as other audit data.</td></tr>
+<tr><td>Eval harness</td><td>Golden questions from real incidents run in BigQuery on every agent or prompt change. A drop in score blocks release.</td></tr>
+<tr><td>Cost caps</td><td>A budget and a per-agent request limit, with an alert on both. Values are set after phase 1 measurement.</td></tr>
+<tr><td>Human checkpoint</td><td>Each agent has a named checkpoint (section 3). An agent output never takes effect on its own.</td></tr>
+<tr><td>Network and tenancy</td><td>Default-deny egress with an allow-list. Agents read only the tenant they are asked about. No cross-client data mixing (AC-003).</td></tr>
+<tr><td>Fallback</td><td>If an agent is down or rejected, the board, alerts and reports work exactly as before.</td></tr>
+</tbody></table></div>
+
+<h2 id="phasing">6. Phasing</h2>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Phase</th><th>Agents</th><th>Exit criterion</th></tr></thead>
+<tbody>
+<tr><td>0</td><td>None. The deterministic core in production, plus the BigQuery views the agents will read (see the GCP architecture doc).</td><td>Core runs on GCP for Epic. Tokenised read-only views exist and are tested.</td></tr>
+<tr><td>1</td><td>1 (Floor Q&amp;A) and 5 (SOP and rules Q&amp;A). Read-only, lowest risk.</td><td>Golden-question score meets a target we set before launch. Share of cited answers meets its target. No agent write permission found in an IAM review.</td></tr>
+<tr><td>2</td><td>2 (Shift-report narrative) and 3 (Data-quality investigator).</td><td>Validator catches every injected wrong number in a test set. Investigator finds the right cause on the golden incident set. WFM and engineers confirm time saved.</td></tr>
+<tr><td>3</td><td>4 (Account-onboarding assistant) and 6 (Reason normaliser).</td><td>Manifests validate and engineers accept most fields. Suggestion accept rate meets its target. Review of deferred items (join residue, proactive alerts) held.</td></tr>
+</tbody></table></div>
+
+<h2 id="asks">7. Asks for the Google team</h2>
+<div class="note warn"><strong>Names and features reflect public information as of writing (2026).</strong> Please confirm every item below before we commit to a design.</div>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Topic</th><th>What we need confirmed</th></tr></thead>
+<tbody>
+<tr><td>Product names and editions</td><td>Current names, editions and limits for Gemini Enterprise, Vertex AI Agent Builder, ADK, Vertex AI Agent Engine, MCP Toolbox for Databases and Model Armor.</td></tr>
+<tr><td>Regions and data residency</td><td>Which regions Agent Engine and Gemini Enterprise run in, and what data-residency options exist. Our GCP region is not chosen yet.</td></tr>
+<tr><td>VPC-SC</td><td>Whether Agent Engine, Gemini Enterprise and Model Armor can sit inside a VPC Service Controls perimeter, and with what restrictions.</td></tr>
+<tr><td>MCP Toolbox and BigQuery</td><td>Support for BigQuery as a source, read-only enforcement at the tool level, and how a BigQuery data agent compares for our case.</td></tr>
+<tr><td>Licensing</td><td>The licensing model: per user, per agent or per request, and what a small group of employees would cost.</td></tr>
+<tr><td>Workspace connector</td><td>How Gemini Enterprise connects to the Telus Workspace tenant, and what the identity requirement is for users.</td></tr>
+<tr><td>Custom agents in Gemini Enterprise</td><td>How an ADK agent on Agent Engine is registered and shown in Gemini Enterprise, and how access is controlled per user group.</td></tr>
+<tr><td>Logging</td><td>What prompt and response logging is available, and whether it can feed our audit store.</td></tr>
+</tbody></table></div>
+
+<h2 id="appendix">8. Appendix: engineering detail</h2>
+<p>For engineers. Tool names are working names. "Scope" is the IAM access the tool needs. Every scope is read-only.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Agent</th><th>Inputs</th><th>Tools and read-only scope</th><th>Output schema</th><th>Eval set (golden questions)</th><th>Failure mode and fallback</th></tr></thead>
+<tbody>
+<tr><td>1. Floor Q&amp;A</td><td>Question, tenant, user role</td><td><code>query_kpi_history</code>: BigQuery data viewer on the tokenised KPI views. <code>read_report</code>: Storage object viewer on the reports bucket.</td><td><code>{answer, citations:[{view, row_keys}], confidence_note}</code></td><td>Questions built from past incidents, such as a shrinkage change after a capture-window change, or a gap after a posting-lag change. Includes unanswerable questions.</td><td>Uncited answer is blocked. On failure the user is pointed to the Details screen.</td></tr>
+<tr><td>2. Shift-report narrative</td><td>Report JSON for one account and day</td><td><code>read_report</code>: Storage object viewer on one report object.</td><td><code>{paragraphs:[text], numbers_used:[value]}</code></td><td>Reports with known tricky cases: unpublished schedules, time-off agents, low join rate. Injected wrong numbers.</td><td>Validator fails: ship the standard rule-based text. No narrative is better than a wrong one.</td></tr>
+<tr><td>3. Data-quality investigator</td><td>Invariant-break event: type, tenant, capture id</td><td><code>run_diagnostic</code>: BigQuery data viewer on census, join log and funnel views (fixed query set, no free SQL).</td><td><code>{suspected_cause, evidence:[query, result_ref], ticket_draft}</code></td><td>The eight lessons replayed as incidents: foreign org in capture, time-off no-show, name-join miss, posting lag, window start.</td><td>Unknown cause: ticket says "cause not identified" and lists what was checked. Never auto-files.</td></tr>
+<tr><td>4. Account-onboarding assistant</td><td>Discovery notes, sample census</td><td><code>read_docs</code>: document viewer on the discovery folder. <code>read_census</code>: BigQuery data viewer on organization-name census.</td><td>Tenant manifest YAML, validated against the schema, plus <code>unsure_fields</code></td><td>Existing accounts re-derived from their discovery data and compared to the approved manifest.</td><td>Schema failure: no draft is shown. The engineer writes the manifest by hand, as today.</td></tr>
+<tr><td>5. SOP and rules Q&amp;A</td><td>Question</td><td>Gemini Enterprise document search over the SOP, alert rules and guide. Index read access only.</td><td><code>{answer, quotes:[{doc, passage}]}</code></td><td>Real TL questions: why an alert fired, what to do for a break overrun, who gets the escalation.</td><td>No passage found: "not covered, ask WFM". Never invents a rule.</td></tr>
+<tr><td>6. Reason normaliser</td><td>Free-text reason, SOP category list</td><td><code>read_reasons</code>: BigQuery data viewer on the reasons view.</td><td><code>{reason_id, suggested_category, rationale}</code></td><td>Past free-text reasons labelled by WFM.</td><td>Low fit: category stays "other". The original text is never overwritten.</td></tr>
+</tbody></table></div>
+
+<h2 id="refs">9. References</h2>
+<p class="refs">Companion pages are linked; repository paths are relative to the repository root.</p>
+<ul class="refs">
+<li><a href="https://claude.ai/artifact/1r5qLW7bRaQgtfihKMt3FA">RTA Board Engineering Guide</a>: alert rules, KPIs, finance and the eight lessons.</li>
+<li><a href="https://claude.ai/artifact/3nw4y6dYgCQqaYdJvpEygW">Epic Games GCP Architecture</a>: the companion GCP architecture for Epic Games.</li>
+<li>Alert rules (<code>RTA_Board_V2/docs/ALERT_RULES.md</code>): full rationale for A1&ndash;A6.</li>
+</ul>
+
+<footer>Product names and capabilities reflect public information as of writing (2026) and must be confirmed with Google. Figures cited from real captures come from the engineering guide. No names or IDs appear in this page.</footer>
+
+</div>

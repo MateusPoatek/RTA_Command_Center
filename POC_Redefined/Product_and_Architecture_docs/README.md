@@ -124,6 +124,8 @@ validated content, each **folds into** a library diagram as detail (reuse, not r
 | Tenant manifest / control plane | [`../docs/engineering/FDAE_CONFIGURATION_LAYER.md`](../docs/engineering/FDAE_CONFIGURATION_LAYER.md) | references (feeds D-07, D-08) |
 | Existing diagram sources | `../docs/diagrams/`, `../docs/engineering/diagrams/mmd/` | reuses / recasts (see disposition table) |
 | RTA Board + TL Alert System (the running Command Center, `RTA_Board_V2/`) | [`rta-board-engineering-guide.html`](rta-board-engineering-guide.html) | how the built POC works: sources, pipeline, alert rules, KPIs, finance view |
+| Epic Games production design on GCP | [`epic-games-gcp-architecture.html`](epic-games-gcp-architecture.html) | POC → GCP mapping, components, security, tenancy, open decisions |
+| Epic Games agentic layer (Gemini Enterprise) | [`epic-games-agentic-layer.html`](epic-games-agentic-layer.html) | where agents fit, and what stays deterministic |
 
 ---
 

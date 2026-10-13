@@ -1,0 +1,408 @@
+<title>Epic Games GCP Architecture</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FCFDFB;--panel:#FFFFFF;--alt:#F2F3ED;--line:#DEE0D9;
+  --text:#222220;--muted:#595956;
+  --head:#4B286D;--band:#4B286D;--band-text:#FFFFFF;--band-muted:#E4D9EE;
+  --accent:#007F4A;--accent-thin:#66CC00;--good-bg:#E6F4EC;
+  --bad:#c0392b;--bad-bg:#FBEAE8;
+  --code-bg:#F2F3ED;--focus:#4B286D;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+    --text:#ECEAF0;--muted:#B0AAB9;
+    --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+    --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+    --bad:#FF7B6B;--bad-bg:#3A1B19;
+    --code-bg:#241E2E;--focus:#CDB4EA;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+  --text:#ECEAF0;--muted:#B0AAB9;
+  --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+  --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+  --bad:#FF7B6B;--bad-bg:#3A1B19;
+  --code-bg:#241E2E;--focus:#CDB4EA;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.6}
+.band{background:var(--band);color:var(--band-text);border-bottom:4px solid var(--accent-thin);padding-block:28px;padding-inline:16px}
+.band-in,.wrap{max-width:1000px;margin-inline:auto}
+.band h1{margin:0 0 6px;font-size:clamp(1.6rem,5vw,2.2rem);line-height:1.15;color:var(--band-text);text-wrap:balance}
+.band p{margin:0;color:var(--band-muted);max-width:70ch}
+.wrap{padding-inline:16px;padding-block:24px 64px}
+h2{color:var(--head);font-size:1.6rem;line-height:1.2;margin:48px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line);text-wrap:balance;scroll-margin-top:12px}
+h3{color:var(--head);font-size:1.15rem;margin:28px 0 8px;text-wrap:balance}
+p,li{max-width:72ch}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:1.3em}
+li{margin-bottom:4px}
+a{color:var(--accent)}
+a:focus-visible,summary:focus-visible,.scroll:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+code,pre{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px;font-size:.86em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.scroll table{border:0;margin:0}
+table{border-collapse:collapse;width:100%;font-size:.92rem;min-width:560px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--alt);color:var(--head);font-weight:700;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td,th{font-variant-numeric:tabular-nums}
+pre.mermaid{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto;margin:0 0 18px;font-size:.85rem;line-height:1.4}
+pre.formula{background:var(--code-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:12px 14px;overflow-x:auto;margin:0 0 14px;font-size:.85rem;line-height:1.5;white-space:pre}
+.glance{background:var(--good-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.glance h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.glance ul{margin:0}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.toc h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.toc ol{columns:2 260px;column-gap:28px;margin:0}
+.toc li{break-inside:avoid}
+.note{background:var(--alt);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:0 0 16px}
+.note.warn{border-left:4px solid var(--bad);background:var(--bad-bg)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--alt);color:var(--muted);vertical-align:middle}
+.tag.live{color:var(--accent);border-color:var(--accent)}
+.tag.plan{color:var(--bad);border-color:var(--bad)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:6px;padding:14px 16px;min-width:0}
+.card h3{margin:0 0 8px;font-size:1.05rem}
+.card dl{margin:0}
+.card dt{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-top:8px}
+.card dd{margin:0;overflow-wrap:anywhere}
+.card dt.bad{color:var(--bad)}
+.refs code{display:inline-block}
+footer{color:var(--muted);font-size:.85rem;margin-top:40px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+<header class="band"><div class="band-in">
+<h1>Epic Games GCP Architecture</h1>
+<p>The production design for the Epic Games account (El Salvador, Philippines, Bulgaria) on Google Cloud. It is the next step after the POC described in the RTA Board Engineering Guide. For the engineering and delivery teams.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="glance">
+<h2>At a glance</h2>
+<ul>
+<li>One tenant (Epic) with three site profiles in one manifest. One container image, no code forks, hosted on Telus Digital GCP and deployed with Terraform.</li>
+<li>The POC logic that runs in the browser or on a laptop moves to Cloud Run services and jobs. The alert rules run once, on the server, so the board, Google Chat and reports all show the same result.</li>
+<li>Team Leads get alerts as direct messages from a Google Chat app, with an "On it" button that calls back. A server-side "already posted" log replaces the POC's 30-minute age heuristic.</li>
+<li>Identity comes from Google Workspace through IAP. The system handles workforce data only. It never touches Epic player or customer data.</li>
+<li>Tenancy Pattern B (shared project) is recommended but still under assessment. Region, WFM-network connectivity and the PH and BG clock APIs are open decisions (section 11).</li>
+</ul>
+</div>
+
+<nav class="toc" aria-label="Contents">
+<h2>Contents</h2>
+<ol>
+<li><a href="#scope">Scope and summary</a></li>
+<li><a href="#mapping">From POC to production</a></li>
+<li><a href="#context">Context diagram</a></li>
+<li><a href="#components">Component diagram</a></li>
+<li><a href="#sequence">Alert sequence</a></li>
+<li><a href="#data">Data and PII</a></li>
+<li><a href="#security">Security and identity</a></li>
+<li><a href="#tenancy">Tenancy and the three sites</a></li>
+<li><a href="#delivery">Environments and delivery</a></li>
+<li><a href="#ops">Operations</a></li>
+<li><a href="#open">Open decisions</a></li>
+<li><a href="#refs">References</a></li>
+</ol>
+</nav>
+
+<h2 id="scope">1. Scope and summary</h2>
+<p>This page designs the production system for all three Epic Games sites. The POC is described in the <a href="https://claude.ai/artifact/1r5qLW7bRaQgtfihKMt3FA">RTA Board Engineering Guide</a>. Read that first. It runs on a laptop: a local API, a Vite app, a Chrome extension, and a browser-side scheduler and Chat loop.</p>
+<p>Each site has a different data profile today.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Site</th><th>Sources today</th><th>Status</th></tr></thead>
+<tbody>
+<tr><td>El Salvador</td><td>Verint and GTT</td><td><span class="tag live">live in POC</span></td></tr>
+<tr><td>Philippines</td><td>Verint only. The clock system API is being negotiated.</td><td><span class="tag plan">pending access</span></td></tr>
+<tr><td>Bulgaria</td><td>Clock system is Verint MyTime. API access is being negotiated. Not yet in Verint capture.</td><td><span class="tag plan">pending access</span></td></tr>
+</tbody></table></div>
+<p><strong>Same image, one manifest.</strong> The three sites run the same container image. Differences live in one tenant manifest for Epic, with one site profile per site (section 8). This follows the rule of one image plus one manifest per client.</p>
+<p>Every service name below is a Google Cloud product. Each is explained in a few words the first time it appears. Anything not yet decided is marked "proposed" or "open".</p>
+<div class="note"><strong>Out of scope here.</strong> Any AI or agent layer is covered in the companion page <a href="https://claude.ai/artifact/TLp97Pbi9S8DUasVdHCRVo">Epic Games Agentic Layer</a>. This page is the deterministic core only.</div>
+
+<h2 id="mapping">2. From POC to production</h2>
+<p>Each row says what runs today, what replaces it, and why. All "Production" entries are proposed.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Today (POC)</th><th>Production on GCP</th><th>Why it changes</th></tr></thead>
+<tbody>
+<tr><td>Local API process on a laptop</td><td>Cloud Run services (managed containers that scale to zero)</td><td>No laptop to keep awake. Runs for every shift, with logs and health checks.</td></tr>
+<tr><td>Rules engine runs in the browser (alert rules, KPIs)</td><td>Server-side service. The rules are ported once, and the board only renders the result.</td><td>The board, Google Chat and reports share one computed result. One definition of each rule, so they cannot disagree.</td></tr>
+<tr><td>Browser report scheduler (settings in localStorage)</td><td>Cloud Scheduler (managed cron) triggers Cloud Run Jobs (containers that run to completion)</td><td>Reports no longer need an open browser. Schedules are per tenant and live in the database.</td></tr>
+<tr><td>Browser 1-minute Chat loop</td><td>Pub/Sub (event bus) then Cloud Tasks (queue with retry and de-duplication) for dispatch</td><td>Dispatch is server-side. Retries and idempotency are built in. Closing the browser stops nothing.</td></tr>
+<tr><td>30-minute "age heuristic": only alerts at most 30 minutes old are posted, because nothing records what was already posted</td><td>A server-side posted log in Cloud SQL (managed PostgreSQL), keyed by alert and escalation level</td><td>This removes the backlog-on-reload problem for good. An alert is posted once per level, by record, not by guess.</td></tr>
+<tr><td>Incoming webhook that posts to a Chat space</td><td>Google Chat app on Cloud Run. It can message one Team Lead directly. A card button "On it" calls back to the service.</td><td>A webhook posts to a space and cannot DM one TL. An alert for the whole floor belongs to nobody. A Chat app fixes that and returns the acknowledgement. It can only DM users who have the app, so a Workspace admin installs it for the TL and manager groups (confirm with the Telus Workspace admins).</td></tr>
+<tr><td>"On it" acknowledgement kept in memory on the board</td><td>Stored in Cloud SQL with who, when and reason</td><td>Survives restarts. Stops the escalation timer on the server.</td></tr>
+<tr><td>"Viewing as" picker: the user chooses who they are</td><td>IAP (Identity-Aware Proxy) plus Google Workspace identity</td><td>The logged-in user is the identity. Closes the "TL identity and auth" gap.</td></tr>
+<tr><td>localStorage for TL list, report config and Chat toggle</td><td>Cloud SQL tables with row-level security on <code>tenant_id</code></td><td>Shared, durable and per tenant, not per browser.</td></tr>
+<tr><td>Debug snapshots on disk (contain names)</td><td>Restricted Cloud Storage bucket with an expiry (TTL)</td><td>Names must not sit on laptops. Access is limited and data expires.</td></tr>
+<tr><td>Report JSON and CSV files on disk</td><td>Cloud Storage for the files, BigQuery (analytics warehouse) for history</td><td>Reports are kept 90 days or more and can be queried for the scorecard and dashboards.</td></tr>
+<tr><td>PDF made in the browser (html2canvas, jsPDF)</td><td>Server-side PDF in a Cloud Run Job</td><td>Same output for everyone. Ready by end of shift with no browser open.</td></tr>
+<tr><td>Chrome extension reads Verint in the RTA's browser and pushes to the board</td><td>Ingest endpoint behind IAP first. Direct Verint REST from Cloud Run later (preferred path).</td><td>Removes the dependency on one person's browser. The relay needs a deliberate PII decision (section 6).</td></tr>
+<tr><td>GTT credential is a key file</td><td>Attached service account or Workload Identity Federation (WIF), with no key files</td><td>Telus requires no key files. The key file is a known conflict and must move.</td></tr>
+<tr><td>GTT poll every 5 minutes and a 3-day TL directory, run by the board</td><td>Cloud Run Job on a schedule</td><td>Poll runs even when nobody has the board open.</td></tr>
+</tbody></table></div>
+
+<h2 id="context">3. Context diagram</h2>
+<p>The system sits inside one perimeter on Telus Digital GCP, protected by VPC Service Controls (VPC-SC, a boundary that blocks data leaving the perimeter). Four external systems talk to it.</p>
+<pre class="mermaid">
+flowchart LR
+  RTA["RTA, TL, Ops Manager, WFM<br/>(Workspace users)"]
+  VER["Verint<br/>schedule and activity"]
+  GTT["GTT report service<br/>clock-in and clock-out"]
+  WD["Workday<br/>(reached through GTT today)"]
+  GCHAT["Google Chat"]
+  IDP["Google Workspace identity"]
+  subgraph PERIM["Telus Digital GCP (VPC-SC perimeter)"]
+    SYS["RTA platform for Epic<br/>3 site profiles, one manifest"]
+  end
+  VER -->|"capture"| SYS
+  GTT -->|"report rows"| SYS
+  WD -.->|"via GTT"| GTT
+  SYS -->|"alerts, DMs"| GCHAT
+  GCHAT -->|"On it callback"| SYS
+  IDP -->|"sign-in, groups"| SYS
+  RTA -->|"board in browser"| SYS
+</pre>
+
+<h2 id="components">4. Component diagram</h2>
+<p>Five groups: Ingest, Core, Delivery, Stores and Platform. All compute is Cloud Run (services and jobs). Kubernetes (GKE) is deferred.</p>
+<pre class="mermaid">
+flowchart TB
+  subgraph Ingest
+    VI["Verint ingest<br/>(Cloud Run)"]
+    GP["GTT poller<br/>(Cloud Run Job, every 5 min)<br/>+ 3-day TL directory refresh"]
+  end
+  subgraph Core
+    NJ["Normalise and join"]
+    RE["Rules engine<br/>alerts A1-A6, KPIs"]
+  end
+  subgraph Delivery
+    API["Board API and UI<br/>(Cloud Run, behind IAP)"]
+    PS["Pub/Sub events"]
+    CT["Cloud Tasks dispatch"]
+    CA["Google Chat app<br/>(Cloud Run)"]
+    RJ["Report jobs<br/>(Cloud Run Jobs)"]
+  end
+  subgraph Stores
+    SQL[("Cloud SQL<br/>state, ack, config, posted log")]
+    FS[("Firestore<br/>hash-chained audit log")]
+    GCS[("Cloud Storage<br/>reports, snapshots")]
+    BQ[("BigQuery<br/>KPI history")]
+    LK["Looker Studio"]
+  end
+  subgraph Platform
+    SM["Secret Manager"]
+    OBS["Logging and Monitoring"]
+    II["Intelligent Insights<br/>(telemetry export)"]
+    SCH["Cloud Scheduler"]
+  end
+  VI --> NJ
+  GP --> NJ
+  NJ --> RE
+  RE --> SQL
+  RE --> PS
+  PS --> CT
+  CT --> CA
+  CA -->|"On it callback"| API
+  API --> SQL
+  API --> RE
+  SCH --> GP
+  SCH --> RJ
+  RJ --> GCS
+  RJ --> BQ
+  RE --> BQ
+  BQ --> LK
+  API --> FS
+  CA --> FS
+  GP -.-> SM
+  CA -.-> SM
+  OBS --> II
+</pre>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Component</th><th>Job</th><th>Source in the POC</th></tr></thead>
+<tbody>
+<tr><td>Verint ingest</td><td>Receives capture first from the extension relay, later from direct Verint REST. Tags every event with <code>tenant_id</code> and site.</td><td>Extension and push to the board</td></tr>
+<tr><td>GTT poller</td><td>Calls the GTT report service every 5 minutes. Refreshes the 3-day TL directory. Retries on failure.</td><td>Board GTT poll</td></tr>
+<tr><td>Normalise and join</td><td>Cleans both sources, then joins by exact name, then a loose unique name match.</td><td><code>join.ts</code>, Verint normalise step</td></tr>
+<tr><td>Rules engine</td><td>Alert rules A1 to A6, three severities, escalation timing and KPIs, ported once to run on the server.</td><td><code>exceptions.ts</code>, <code>kpis.ts</code></td></tr>
+<tr><td>Board API and UI</td><td>Serves the three screens. Reads results from the rules engine. Behind IAP.</td><td>React app on :5174</td></tr>
+<tr><td>Dispatch and Chat app</td><td>Cloud Tasks delivers each alert through the Chat app: DM to the TL, one card per alert, "On it" button.</td><td>Browser Chat loop, <code>chat.ts</code></td></tr>
+<tr><td>Report jobs</td><td>Build the shift report, PDF and XLSX on schedule. Write to Cloud Storage and BigQuery.</td><td>Browser scheduler, report generation in the local API</td></tr>
+<tr><td>Stores</td><td>Cloud SQL for operational state. Firestore for the write-once audit log. Cloud Storage for files. BigQuery for history. Looker Studio for cross-account dashboards.</td><td>localStorage, files on disk</td></tr>
+<tr><td>Platform</td><td>Secret Manager holds the Verint token, GTT credential and Chat app settings. Logging and Monitoring feed alerts and the Intelligent Insights export.</td><td>Environment file</td></tr>
+</tbody></table></div>
+
+<h3>Build versus extend</h3>
+<p>The company already runs a production WFM automation platform on Telus Digital GCP: an Automation Anywhere orchestrator with about 125 bots, PostgreSQL without PII, and Intelligent Insights for audit and observability. The decision is to <strong>extend</strong> it, not rebuild. This design adds only three things: real-time Verint capture, the RTA board with one-click human approval, and the GTT and Verint reconciliation. Logs and metrics are exported to Intelligent Insights.</p>
+
+<h2 id="sequence">5. Alert sequence</h2>
+<p>From capture to Team Lead acknowledgement, with escalation. All timing runs on the server. Today's POC escalates from TL to Ops Manager after 5 minutes, then to the WFM Director 10 minutes later. These timings are the POC's and carry over unless the rules change.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant V as Verint capture
+  participant I as Ingest
+  participant R as Rules engine
+  participant L as Posted log (Cloud SQL)
+  participant T as Cloud Tasks
+  participant C as Chat app
+  participant TL as Team Lead
+  participant OM as Ops Manager
+  V->>I: capture (tenant and site tagged)
+  I->>R: normalised and joined data
+  R->>R: evaluate alert rules, severity
+  R->>L: has this alert and level been posted?
+  L-->>R: no
+  R->>T: enqueue Sev 1 alert for the TL
+  T->>C: deliver (retry on failure)
+  C->>TL: direct message with card
+  C->>L: record posted
+  alt TL presses On it
+    TL->>C: button callback
+    C->>R: acknowledge (who, when, reason)
+    R->>L: store ack, stop escalation timer
+  else no acknowledgement in time
+    R->>T: enqueue next level
+    T->>C: deliver
+    C->>OM: direct message with card
+    C->>L: record posted at new level
+  end
+</pre>
+
+<h2 id="data">6. Data and PII</h2>
+<p><strong>The system handles workforce data only.</strong> That means schedules, activity states, clock events and supervisor assignments for Epic agents. It never reads or stores Epic player or customer data.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Data class</th><th>Examples</th><th>Store</th><th>Retention</th><th>Who can read</th></tr></thead>
+<tbody>
+<tr><td>Employee PII</td><td>Agent names, employee IDs, supervisor names</td><td>Cloud SQL (row-level security). Restricted bucket for any snapshot.</td><td>Snapshots expire by TTL (proposed value open). Operational rows follow a retention rule still to be set.</td><td>Role-based: TL sees own team, RTA and Ops Manager see their scope, WFM sees all in tenant</td></tr>
+<tr><td>Operational</td><td>Alerts, severities, acknowledgements, posted log, reasons</td><td>Cloud SQL</td><td>To be set with WFM (open)</td><td>Same roles</td></tr>
+<tr><td>Audit</td><td>Who acknowledged, who viewed, dispatch records</td><td>Firestore, write-once and hash-chained</td><td>90 days or more</td><td>Engineers and audit role only</td></tr>
+<tr><td>Reports and artefacts</td><td>Shift reports, PDF, XLSX</td><td>Cloud Storage</td><td>90 days or more</td><td>WFM and Ops Manager roles</td></tr>
+<tr><td>Aggregate</td><td>KPI history, shrinkage, scorecard feed</td><td>BigQuery</td><td>Kept for history and evals</td><td>WFM, dashboards in Looker Studio</td></tr>
+<tr><td>Secrets</td><td>Verint token, GTT credential, Chat app settings</td><td>Secret Manager</td><td>Rotated per policy</td><td>Service accounts only</td></tr>
+</tbody></table></div>
+<ul>
+<li><strong>Raw capture payloads are dropped after normalisation.</strong> Only the normalised fields are kept.</li>
+<li><strong>Tokenisation.</strong> Names and employee IDs are tokenised before any LLM call. De-tokenisation happens at the UI edge. See the companion agentic page.</li>
+<li><strong>Frameworks.</strong> Baseline is SOC 2 Type II controls. Employee data falls under PIPEDA and GDPR. It is not PCI data.</li>
+<li><strong>Extension relay.</strong> Sending Verint capture from a browser to a backend moves PII off the RTA's machine. That needs a deliberate decision before it is turned on.</li>
+</ul>
+
+<h2 id="security">7. Security and identity</h2>
+<h3>Roles through IAP</h3>
+<p>IAP puts a Google sign-in in front of the board API and the Chat callback. Roles map to Google Workspace groups. Identity must resolve to the Telus corporate Workspace domain.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Role</th><th>Workspace group (proposed)</th><th>Sees</th></tr></thead>
+<tbody>
+<tr><td>TL</td><td>One group per tenant</td><td>My team screen, own people only</td></tr>
+<tr><td>RTA</td><td>One group per tenant</td><td>Floor screen, all TLs of the tenant</td></tr>
+<tr><td>Ops Manager</td><td>One group per tenant</td><td>Floor and escalations, reports</td></tr>
+<tr><td>WFM</td><td>One group per tenant</td><td>All screens including Details, reports, dashboards</td></tr>
+</tbody></table></div>
+<p>A TL's own team comes from the GTT supervisor column. Verint has no TL field. The mapping from a signed-in user to a supervisor name is an open item.</p>
+<h3>Controls</h3>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Control</th><th>What it does</th></tr></thead>
+<tbody>
+<tr><td>Per-tenant service accounts</td><td>Each tenant's services run as their own identity with least privilege. No cross-tenant reads.</td></tr>
+<tr><td>Row-level security</td><td>Cloud SQL rows filter on <code>tenant_id</code>.</td></tr>
+<tr><td>Workload Identity Federation for CI</td><td>GitHub Actions deploys without stored keys. Telus requires this.</td></tr>
+<tr><td>VPC-SC perimeter</td><td>Blocks data leaving the perimeter. The VPC design itself is not done yet (open).</td></tr>
+<tr><td>Default-deny egress</td><td>Outbound traffic only to an allow-list: Verint, the GTT report service, Google Chat.</td></tr>
+<tr><td>Secret Manager</td><td>No secrets in images or environment files.</td></tr>
+<tr><td>Audit log</td><td>Write-once, hash-chained, 90 days or more.</td></tr>
+</tbody></table></div>
+<div class="note warn"><strong>Known conflict.</strong> Today's GTT credential is a key file. That breaks the no-key-file rule. In production it must move to an attached service account or WIF before go-live.</div>
+
+<h2 id="tenancy">8. Tenancy and the three sites</h2>
+<p><strong>Recommended: Pattern B, a shared GCP project with <code>tenant_id</code> routing, row-level security and per-tenant service accounts. Status: under assessment.</strong> Epic is a non-bank client, so it falls in the "permissive" group that may run on Telus Digital GCP. The POC already runs on a shared-project model. See GCP tenancy models (<code>POC_Redefined/Product_and_Architecture_docs/gcp-tenancy-models.html</code>).</p>
+<p><strong>What would trigger Pattern A</strong> (a dedicated project for Epic):</p>
+<ul>
+<li>Epic or Telus legal asks for regulated-data isolation or a contract term that requires it.</li>
+<li>A data-residency requirement that the shared project's region cannot meet.</li>
+<li>An audit finding on shared infrastructure for this tenant.</li>
+<li>Epic data of a more sensitive class than workforce data enters scope.</li>
+</ul>
+<p>Isolation choice follows regulatory exposure, never the Gold, Silver or Bronze tier.</p>
+<h3>One tenant, three site profiles</h3>
+<p>One tenant, Epic. One manifest. One profile per site. The Verint organisation follows the pattern <code>BPO_Client_Site_LOB</code>.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Site</th><th>Timezone</th><th>Verint</th><th>Clock system</th><th>Status</th><th>What the manifest carries</th></tr></thead>
+<tbody>
+<tr><td>El Salvador</td><td>America/El_Salvador</td><td>Yes, org match for the SV site</td><td>GTT (functional area for Epic, one SV site)</td><td><span class="tag live">live in POC</span></td><td>Site id, timezone, Verint org match rule, GTT functional area and site list, Chat settings</td></tr>
+<tr><td>Philippines</td><td>Asia/Manila</td><td>Yes, org match for the PH site</td><td>PST. API access being negotiated.</td><td><span class="tag plan">pending</span></td><td>Site id, timezone, Verint org match rule, clock system name, source marked "not connected"</td></tr>
+<tr><td>Bulgaria</td><td>Europe/Sofia</td><td>Not yet in capture</td><td>Verint MyTime. API access being negotiated.</td><td><span class="tag plan">pending</span></td><td>Site id, timezone, clock system name, Verint org match rule to add once captured</td></tr>
+</tbody></table></div>
+<p>Adding a source later means editing the manifest, not the code. Alerts that need a clock source (for example "not clocked in") stay off for a site until its clock source is connected. That behaviour is proposed.</p>
+
+<h2 id="delivery">9. Environments and delivery</h2>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Item</th><th>Design (proposed)</th></tr></thead>
+<tbody>
+<tr><td>Environments</td><td>dev, stage, prod. Each is its own set of resources. Whether they share a project is open (section 11).</td></tr>
+<tr><td>Infrastructure</td><td>Terraform for everything. No console changes.</td></tr>
+<tr><td>CI</td><td>GitHub Actions. It authenticates to GCP with Workload Identity Federation, no key files.</td></tr>
+<tr><td>Images</td><td>Artifact Registry (container store). One image for every site and tenant.</td></tr>
+<tr><td>Release</td><td>Cloud Deploy (managed release pipeline): dev, then stage, then prod, with approval before prod.</td></tr>
+<tr><td>Config</td><td>The tenant manifest is versioned data, reviewed like code.</td></tr>
+<tr><td>Cloud project</td><td>A Telus Digital GCP project was provisioned in July 2026. The legacy GCP estate is being migrated to Terraform.</td></tr>
+</tbody></table></div>
+
+<h2 id="ops">10. Operations</h2>
+<h3>Service levels</h3>
+<p>These are targets, proposed for agreement. They are not measured yet.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Objective</th><th>Target</th><th>Measured from</th></tr></thead>
+<tbody>
+<tr><td>Alert latency</td><td>At most 2 minutes</td><td>Verint capture time to the Chat message sent</td></tr>
+<tr><td>Chat delivery</td><td>Delivered with retries. Failures after retries are logged and alarmed.</td><td>Dispatch task result</td></tr>
+<tr><td>Shift report</td><td>Ready by end of shift</td><td>Schedule time to file written</td></tr>
+<tr><td>GTT freshness</td><td>At most 10 minutes old</td><td>Last good poll to now</td></tr>
+</tbody></table></div>
+<h3>Monitoring and alerting</h3>
+<ul>
+<li>Cloud Logging and Cloud Monitoring (logs and metrics) for every service and job, with one dashboard per tenant.</li>
+<li>Alert policies on each objective above: latency, dispatch failures, report not written, GTT stale.</li>
+<li>Telemetry exported to Intelligent Insights for audit and observability.</li>
+<li><strong>Retries are required.</strong> The GTT report service and the Chat endpoint both fail in a transient way, such as auth rejections and 5xx errors. The POC already retries both. Production keeps retries and treats a single failure as normal, not an incident.</li>
+<li>Runbooks for: GTT stale, Chat delivery failing, Verint capture silent, report job failed.</li>
+</ul>
+
+<h2 id="open">11. Open decisions</h2>
+<p>None of these is decided. Owners are not assigned yet.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Decision</th><th>Options</th><th>What it blocks</th><th>Owner</th></tr></thead>
+<tbody>
+<tr><td>Region</td><td>A North America region; europe-west1, where the GTT report service runs; others. No region is chosen.</td><td>Terraform baseline, latency to GTT, data-residency answer</td><td>TBD</td></tr>
+<tr><td>Shared or dedicated project</td><td>Pattern B (shared, recommended) or Pattern A (dedicated)</td><td>Project layout, IAM, VPC-SC design</td><td>TBD</td></tr>
+<tr><td>WFM-network connectivity (R-11)</td><td>Private connectivity from the WFM network to GCP; relay through an existing host; extension relay only</td><td>Direct Verint REST, the GTT and clock sources behind the network. This is the gating unknown.</td><td>TBD</td></tr>
+<tr><td>PH and BG clock APIs</td><td>PST API for PH; Verint MyTime API for BG; export-file fallback</td><td>Clock-based alerts and reconciliation for those sites</td><td>TBD</td></tr>
+<tr><td>Verint read-only service account</td><td>Request a read-only account on Telus-owned tenants; keep the extension relay where the tenant is client-owned</td><td>Server-side capture without a browser</td><td>TBD</td></tr>
+<tr><td>Workday direct access</td><td>Keep Workday through GTT; request direct read access</td><td>Roster source independent of GTT</td><td>TBD</td></tr>
+<tr><td>Extension relay PII decision</td><td>Allow the relay with controls; skip it and wait for direct REST</td><td>Early server-side ingest for all sites</td><td>TBD</td></tr>
+<tr><td>Retention values</td><td>Snapshot TTL and operational-row retention to be proposed</td><td>Terraform lifecycle rules, privacy review</td><td>TBD</td></tr>
+</tbody></table></div>
+
+<h2 id="refs">12. References</h2>
+<div class="refs">
+<ul>
+<li><a href="https://claude.ai/artifact/1r5qLW7bRaQgtfihKMt3FA">RTA Board Engineering Guide</a> (companion, describes the POC)</li>
+<li><a href="https://claude.ai/artifact/TLp97Pbi9S8DUasVdHCRVo">Epic Games Agentic Layer</a> (companion, where AI does and does not fit)</li>
+<li>GCP tenancy models (<code>POC_Redefined/Product_and_Architecture_docs/gcp-tenancy-models.html</code>)</li>
+<li>GCP future-state architecture (<code>POC_Redefined/Product_and_Architecture_docs/gcp-future-state-architecture.html</code>)</li>
+<li>System architecture (<code>POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md</code>)</li>
+<li>Alert rules (<code>RTA_Board_V2/docs/ALERT_RULES.md</code>)</li>
+</ul>
+</div>
+
+<footer>This is a design proposal. Items marked proposed or open are not decided. The POC facts come from the repository as of 2026-10-13.</footer>
+</div>
