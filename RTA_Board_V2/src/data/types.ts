@@ -58,4 +58,6 @@ export interface Data {
   verint: VerintAgent[];
   gtt: GttEvent[];
   workday: WorkdayRecord[];
+  /** Who reports to which TL, from the last few days of GTT: today's GTT only knows agents who already clocked in. */
+  directory?: Array<Pick<GttEvent, "workdayId" | "employee" | "supervisor">>;
 }

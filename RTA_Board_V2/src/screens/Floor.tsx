@@ -39,7 +39,7 @@ export function Floor({ model, now, asOf, kpis, fresh, wall, track, outage, onOu
       {!teams.length && <p className="muted">No agents yet.</p>}
       {busy.map((t) => (
         <button key={`${t.lob}|${t.tl}`} className={`teamrow ${t.state}`} onClick={() => onOpen(t.tl)} disabled={wall}>
-          <b>{t.tl}</b>
+          <b>{t.tl === "Unassigned" ? "No Team Lead found (RTA)" : t.tl}</b>
           <span className="lob">{lobLabel(t.lob)}</span>
           <span>{t.red + t.grey ? `${t.red + t.grey} need action` : `${t.acked} handled`}{t.minor ? <span className="muted"> · +{t.minor} minor</span> : null}</span>
           <span>{t.oldest ? `oldest ${t.oldest} min` : ""}</span>

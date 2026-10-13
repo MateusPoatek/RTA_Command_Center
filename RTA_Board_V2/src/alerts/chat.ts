@@ -15,13 +15,18 @@ export interface ChatCard {
 }
 
 const MAX_LINES = 20; // a card nobody scrolls is ANA's "100 messages" again
+// Only alerts that are new get a Chat post. An older one was already visible before this board opened
+// (or was just reloaded), so it stays on the board: posting the backlog on every page load is ANA's spam again.
+// ponytail: age heuristic; a server-side "already posted" log replaces it when dispatch moves off the browser.
+export const CHAT_FRESH_MIN = 30;
+export const tlLabel = (tl: string) => (!tl || tl === "Unassigned" ? "RTA (no Team Lead found)" : tl);
 
-const line = (e: Exception) => `<b>For ${e.tl || "unassigned TL"}:</b> ${displayName(e.agent)} ${sentence(e)} · ${e.minutes} min`;
+const line = (e: Exception) => `<b>For ${tlLabel(e.tl)}:</b> ${displayName(e.agent)} ${sentence(e)} · ${e.minutes} min`;
 const para = (lines: string[]) => ({ textParagraph: { text: lines.slice(0, MAX_LINES).join("<br>") + (lines.length > MAX_LINES ? `<br>…and ${lines.length - MAX_LINES} more on the board` : "") } });
 
 /** Alerts not posted yet: new Sev 1s (outside a LOB incident) and escalations that rose a level. */
 export function chatDue(m: BoardModel, track: Record<string, Track>, now: number) {
-  const fresh = m.exceptions.filter((e) => e.sev === 1 && !e.incident && !track[e.key]?.chatAt);
+  const fresh = m.exceptions.filter((e) => e.sev === 1 && !e.incident && !track[e.key]?.chatAt && !track[e.key]?.ackAt && e.minutes <= CHAT_FRESH_MIN);
   const escalate = m.exceptions.flatMap((e) => {
     const t = track[e.key];
     if (!t?.sentAt || t.ackAt || !t.chatAt) return [];

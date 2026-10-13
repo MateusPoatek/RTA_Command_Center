@@ -39,7 +39,7 @@ export interface Joined {
 export function joinAll(d: Data): Joined[] {
   const exact = new Set(d.verint.map((a) => nameKey(a.name)));
   const names = (xs: Array<{ employee?: string }>) => xs.map((x) => x.employee ?? "").filter((n) => n && !exact.has(nameKey(n)));
-  const loose = looseNameMatch([...names(d.gtt), ...names(d.workday)], d.verint.filter((a) => a.workdayId === undefined).map((a) => a.name));
+  const loose = looseNameMatch([...names(d.gtt), ...names(d.workday), ...names(d.directory ?? [])], d.verint.filter((a) => a.workdayId === undefined).map((a) => a.name));
   return d.verint.map((agent) => {
     const byId = agent.workdayId !== undefined;
     let viaLoose = false;
@@ -51,11 +51,9 @@ export function joinAll(d: Data): Joined[] {
     };
     const workday = d.workday.find(match);
     const gtt = d.gtt.filter(match);
-    return {
-      agent, gtt, workday,
-      joinKey: byId ? "workday_id" : viaLoose ? "name_loose" : "name",
-      tl: workday?.supervisor || gtt[0]?.supervisor || "Unassigned",
-    };
+    const joinKey = byId ? "workday_id" : viaLoose ? "name_loose" : "name"; // before the directory lookup: it is not a data join
+    const known = d.directory?.find(match);
+    return { agent, gtt, workday, joinKey, tl: workday?.supervisor || gtt[0]?.supervisor || known?.supervisor || "Unassigned" };
   });
 }
 

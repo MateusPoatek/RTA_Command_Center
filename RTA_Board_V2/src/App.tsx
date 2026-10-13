@@ -17,7 +17,7 @@ import { Sources } from "./screens/Sources";
 import { Reports } from "./screens/Reports";
 import { useReports } from "./reports/useReports";
 import { buildAdherenceSummary } from "./reports/adherenceSummary";
-import { alertCard, chatDue, digestCard, dispatch, escalationCard } from "./alerts/chat";
+import { CHAT_FRESH_MIN, alertCard, chatDue, digestCard, dispatch, escalationCard } from "./alerts/chat";
 import type { ChatResult } from "./alerts/chat";
 
 const GTT_POLL_MS = 5 * 60000;
@@ -36,6 +36,12 @@ export function App() {
   const [wall, setWall] = useState(false);
   const [accountId, setAccountId] = useState("DEMO");
   const [gtt, setGtt] = useState<Gtt>({ state: "off" });
+  const [directory, setDirectory] = useState<NonNullable<Data["directory"]>>([]);
+  // Google Chat is opt-in per account: a board left open should not post to a client's space by surprise.
+  const chatKey = `rta.chat.${accountId}`;
+  const [chatOn, setChatOnState] = useState(false);
+  useEffect(() => { try { setChatOnState(localStorage.getItem(chatKey) === "on"); } catch { setChatOnState(false); } }, [chatKey]);
+  const setChatOn = (on: boolean) => { setChatOnState(on); try { localStorage.setItem(chatKey, on ? "on" : "off"); } catch { /* private window */ } };
   const account = PILOT.find((a) => a.id === accountId);
 
   useEffect(() => {
@@ -63,6 +69,7 @@ export function App() {
     setLive(null);
     setTrack({});
     setOutage(new Set());
+    setDirectory([]);
     if (!account) return setGtt({ state: "off" });
     if (!account.gttFunctionalArea) return setGtt({ state: "off" });
     let stop = false;
@@ -73,6 +80,9 @@ export function App() {
         .catch((e: Error) => !stop && setGtt({ state: "error", error: e.message }));
     };
     load();
+    // TL directory: the last 3 days of GTT (once per account), so agents who have not clocked in today still have a TL.
+    Promise.all([1, 2, 3].map((k) => fetchGtt(account, Date.now() - k * 86400000).then((r) => r.events).catch(() => [])))
+      .then((days) => { if (stop) return; const by = new Map(days.flat().map((e) => [e.workdayId, { workdayId: e.workdayId, employee: e.employee, supervisor: e.supervisor }])); setDirectory([...by.values()].filter((e) => e.supervisor)); });
     const id = setInterval(load, GTT_POLL_MS);
     return () => { stop = true; clearInterval(id); };
   }, [accountId]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -89,8 +99,8 @@ export function App() {
     return [...n];
   }, [raw, accountId]);
   const data = useMemo<Data>(
-    () => (account ? { verint: roster, gtt: gtt.state === "live" ? gtt.events : [], workday: [] } : fixtures),
-    [account, roster, gtt, fixtures],
+    () => (account ? { verint: roster, gtt: gtt.state === "live" ? gtt.events : [], workday: [], directory } : fixtures),
+    [account, roster, gtt, directory, fixtures],
   );
   const gttOnly = useMemo(() => {
     if (!account || gtt.state !== "live") return 0;
@@ -121,7 +131,7 @@ export function App() {
   // Alerts run on the wall clock (minutes keep counting between captures); KPIs above are as of the capture.
   const model = useMemo(() => buildBoard(data, now, outage), [data, now, outage]);
   const tls = useMemo(() => [...new Set(model.teams.map((t) => t.tl))].sort(), [model]);
-  const myTl = tls.includes(tl) ? tl : tls[0] ?? "";
+  const myTl = tls.includes(tl) ? tl : ""; // no silent default: My team asks who you are
   const onTrack = (k: string, p: Track) => setTrack((t) => ({ ...t, [k]: { ...t[k], ...p } }));
   // Sev 1 (outside a LOB incident) goes to the TL the moment it appears — nobody has to press "notify".
   // sentAt starts the escalation clock; the Google Chat post follows in the next one-minute batch (below).
@@ -139,14 +149,14 @@ export function App() {
   // one with escalations that rose a level. Sev 2 only goes in the 30-min digest; Sev 3 is never sent.
   // The interval reads the latest state from a ref; it is marked as posted even when simulated, so no re-spam.
   const [chat, setChat] = useState<ChatResult | null>(null);
-  const chatRef = useRef({ account, model, track, kpis, asOf, report: reports.report });
-  chatRef.current = { account, model, track, kpis, asOf, report: reports.report };
+  const chatRef = useRef({ account, model, track, kpis, asOf, report: reports.report, chatOn });
+  chatRef.current = { account, model, track, kpis, asOf, report: reports.report, chatOn };
   useEffect(() => {
     setChat(null);
     if (!account) return;
     const id = setInterval(() => {
-      const { account: a, model: m, track: tr } = chatRef.current;
-      if (!a) return;
+      const { account: a, model: m, track: tr, chatOn: on } = chatRef.current;
+      if (!a || !on) return;
       const t = Date.now();
       const { fresh, escalate } = chatDue(m, tr, t);
       if (!fresh.length && !escalate.length) return;
@@ -165,7 +175,7 @@ export function App() {
     const { account: a, model: m, track: tr, kpis: k, asOf: at, report } = chatRef.current;
     if (a) dispatch(a.id, digestCard(m, tr, k, at, report, a.label), "digest").then(setChat);
   }, []);
-  const digestOn = !!reports.config?.chatDigestEnabled;
+  const digestOn = chatOn && !!reports.config?.chatDigestEnabled;
   useEffect(() => {
     if (!digestOn) return;
     const id = setInterval(sendDigest, 30 * 60000);
@@ -212,11 +222,16 @@ export function App() {
           {gttOnly > 0 && <>{gttOnly} employee(s) clocked in on GTT are not in the Verint roster. </>}
         </div>
       )}
-      {account && chat && !wall && screen !== "details" && (
-        <div className="snap muted">Google Chat · {hhmm(chat.at)} · {chat.what}: {chat.ok ? "posted to the account's space" : chat.error?.includes("simulated") ? "simulated: no webhook set for this account" : <span className="bad">not posted ({chat.error})</span>}</div>
+      {account && !wall && screen !== "details" && (
+        <div className="snap muted chatline">
+          {chatOn ? <>Google Chat <b className="ok">on</b>: new red alerts (under {CHAT_FRESH_MIN} min old) go to {account.label}'s space once a minute.</>
+            : <>Google Chat <b>off</b>: alerts stay on this board.</>}
+          {chat && <> Last: {hhmm(chat.at)} · {chat.what} · {chat.ok ? "posted" : chat.error?.includes("simulated") ? "simulated (no webhook set)" : <span className="bad">not posted ({chat.error})</span>}.</>}
+          <button onClick={() => setChatOn(!chatOn)}>{chatOn ? "Turn Chat off" : "Send alerts to Google Chat"}</button>
+        </div>
       )}
       {screen === "team" && !wall && (
-        <TeamLead data={data} model={model} now={now} wall={wall} tl={myTl} tls={tls} onTl={setTl} track={track} onTrack={onTrack} />
+        <TeamLead data={data} model={model} now={now} wall={wall} tl={myTl} tls={tls} onTl={setTl} track={track} onTrack={onTrack} chatOn={chatOn} />
       )}
       {(screen === "floor" || wall) && (
         <Floor model={model} now={now} asOf={asOf} kpis={kpis} fresh={fresh} wall={wall} track={track} outage={outage}
