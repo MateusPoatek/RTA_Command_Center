@@ -19,6 +19,12 @@ export interface VerintRosterRow {
   time_in_activity: string;
   days_adherence: string;
   lob?: string;
+  /** Planned shift open (ISO) and, once the agent has started, actual open. Empty = not started. */
+  scheduled_shift_start?: string;
+  shift_start?: string;
+  /** Next planned activity after now (from publishedSchedule). */
+  next_activity?: string;
+  next_activity_start?: string;
 }
 
 interface BridgeMessage {

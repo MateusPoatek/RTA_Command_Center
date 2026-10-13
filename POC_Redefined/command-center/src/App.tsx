@@ -77,6 +77,8 @@ import { ShiftStartModal }    from "./components/ShiftStartModal";
 import { HealthStrip }        from "./components/HealthStrip";
 import { PriorityFeed }       from "./components/PriorityFeed";
 import { FloorView }          from "./components/FloorView";
+import { Board }              from "./components/Board";
+import type { BoardState }    from "./components/Board";
 import { ProcessView }        from "./components/ProcessView";
 import { LearningStrip }      from "./components/LearningStrip";
 import { AgentActivityTicker } from "./components/AgentActivityTicker";
@@ -411,7 +413,8 @@ function App() {
   }, [verintRoster, activeAccount]);
   useEffect(() => { verintRosterRef.current = verintRoster; }, [verintRoster]);
   // Which surface fills the left panel: the priority feed, or the spatial Floor View.
-  const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
+  const [mainView, setMainView] = useState<"priority-feed" | "floor" | "board">("priority-feed");
+  const [boardState, setBoardState] = useState<BoardState>({});
   useExtensionBridge((liveCards, syncedAt, roster) => {
     // Merge instead of blind-replace: a violation already actioned this shift
     // (sent/queued/suppressed/etc.) must not resurrect as "needs-review" just
@@ -1016,8 +1019,25 @@ function App() {
             >
               Floor View
             </button>
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mainView === "board"}
+              className={`lvt-btn${mainView === "board" ? " lvt-btn--active" : ""}`}
+              onClick={() => setMainView("board")}
+            >
+              Alert Board
+            </button>
           </div>
-          {mainView === "floor" ? (
+          {mainView === "board" ? (
+            <Board
+              cards={visibleCards}
+              roster={verintRoster}
+              state={boardState}
+              onChange={(id, patch) => setBoardState((s) => ({ ...s, [id]: { ...s[id], ...patch } }))}
+              onOpenCard={(cardId) => { setFocusedCardId(cardId); setMainView("priority-feed"); }}
+            />
+          ) : mainView === "floor" ? (
             <FloorView
               cards={visibleCards}
               lobData={lobHealth}
