@@ -1,0 +1,101 @@
+# =============================================================================
+# accounts.manifest.example.yaml — how to configure an account, by data source
+# =============================================================================
+# EXAMPLE ONLY. Nothing reads this file yet; it is the spec for a future loader.
+# Today the same settings live in three places:
+#   - command-center/src/domain/accounts.ts   ACCOUNT_CATALOG (Verint, GTT, clock system, timezone)
+#   - POC_Redefined/.env                      GCHAT_WEBHOOK_<ACCOUNT> (secret — never put it here)
+#   - command-center/src/domain/board.ts      LEAD_MIN / LATE_MAX_MIN, and
+#     command-center/src/components/Board.tsx ACK_SLA_MIN (Alert Board windows)
+#
+# Pick the archetype that matches the account's data sources, copy it, change values.
+#   A) EPIC     — GTT + Verint, everything confirmed live
+#   B) EPIC_PH  — Verint only (clock system has no API access yet)
+#   C) EPIC_BG  — not integrated yet; the minimum viable entry
+# Fields marked (PROPOSED) have no home in the code today.
+# =============================================================================
+
+defaults:
+  timezone: America/Toronto          # used when an account omits `timezone`
+  board:                             # Alert Board windows, minutes. Accounts may override.
+    preShiftLeadMinutes: 10          # remind to log in / flag next activity this long before it starts
+    lateLoginMaxMinutes: 15          # keep showing "not logged in" this long after shift start
+    ackSlaMinutes: 5                 # sent to team lead but unacknowledged longer than this -> "NO ACK" flashes
+
+accounts:
+
+  # ---------------------------------------------------------------------------
+  # A) GTT + Verint — full reconciliation (GTT clock events vs Verint schedule)
+  # ---------------------------------------------------------------------------
+  EPIC:
+    label: Epic Games (El Salvador)
+    timezone: America/El_Salvador
+    confirmed: true                  # true ONLY after every value below was verified live against GTT and Verint,
+                                     # not just copied from a CSV. false shows a warning in the Config panel.
+    clock:
+      system: GTT                    # GTT | Verint MyTime | PST | TBD  (descriptive; the data source drives behaviour)
+      status: live                   # live | negotiating_api_access | not_started
+    gtt:
+      functionalArea: FA_Epic Games  # top-level FA string from FAvsID.csv, not a sub-account variant
+      sites:                         # must match GTT exactly. A wrong string returns a SILENT HTTP 200 with 0 rows.
+        - SV - Antiguo Cuscatlan - Torre Emblema   # multiple sites are joined with "|;" (GTT's own delimiter)
+    verint:
+      url: https://wfo.a87.verintcloudservices.com
+      capture: extension             # extension = RTA Live Bridge reads Verint in the RTA's browser
+                                     #   (client-owned tenant / Citrix / SAML SSO)
+                                     # server    = server-direct via non-federated service account (Telus-owned tenant)
+    chat:
+      webhookEnv: GCHAT_WEBHOOK_EPIC # NAME of the env var in .env holding the Google Chat webhook URL
+    board:                           # optional per-account override of defaults.board
+      preShiftLeadMinutes: 15
+    teamLeads:                       # (PROPOSED) who "Send to TL" targets, and who may acknowledge
+      - name: Example Lead One
+        lobs: [EPIC]
+        chatUser: users/000000000000000000000   # Google Chat user id, for @mention
+
+  # ---------------------------------------------------------------------------
+  # B) Verint only — no GTT. Report source defaults to "verint_only" and the
+  #    GTT-only columns (workday_id, subgroup, gtt_event...) are hidden.
+  # ---------------------------------------------------------------------------
+  EPIC_PH:
+    label: Epic Games (Philippines)
+    timezone: Asia/Manila
+    confirmed: true
+    clock:
+      system: PST                    # target clock system; Telus is negotiating API access
+      status: negotiating_api_access # stays verint-only until this becomes `live`
+    gtt: null                        # no GTT for this site; leave functionalArea blank, do not copy El Salvador's
+    verint:
+      url: https://wfo.a87.verintcloudservices.com   # real tenant URL, optionally with the deep-link hash
+      capture: extension
+    chat:
+      webhookEnv: GCHAT_WEBHOOK_EPIC_PH
+    teamLeads: []                    # (PROPOSED) empty = Board can rank rows but "Send to TL" has no target
+
+  # ---------------------------------------------------------------------------
+  # C) Not integrated — smallest entry that keeps the account selectable.
+  #    Unknown values are null/empty, NEVER guessed (a wrong value fails silently).
+  # ---------------------------------------------------------------------------
+  EPIC_BG:
+    label: Epic Games (Bulgaria)
+    timezone: Europe/Sofia
+    confirmed: false                 # shows the "placeholder values" warning in the UI
+    clock:
+      system: Verint MyTime
+      status: negotiating_api_access
+    gtt: null
+    verint:
+      url: null                      # fill once the real tenant URL is given
+      capture: extension
+    chat:
+      webhookEnv: null               # no webhook yet -> dispatch to Chat is unavailable for this account
+
+# =============================================================================
+# Onboarding a new account
+# =============================================================================
+# 1. Choose the archetype (A/B/C) from what the account actually has.
+# 2. Copy the block; set label + timezone (IANA name).
+# 3. GTT account: take functionalArea from FAvsID.csv and CONFIRM sites with a live report (0 rows = wrong string).
+# 4. Verint: set url; choose capture by tenant ownership (Telus-owned -> server, client-owned/Citrix -> extension).
+# 5. Chat: create the webhook, add GCHAT_WEBHOOK_<ACCOUNT> to .env (restart local_api.py), put the NAME here.
+# 6. Flip confirmed: true only after a live end-to-end report succeeds for that account.
