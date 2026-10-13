@@ -1,0 +1,522 @@
+<title>RTA Board Engineering Guide</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#FCFDFB;--panel:#FFFFFF;--alt:#F2F3ED;--line:#DEE0D9;
+  --text:#222220;--muted:#595956;
+  --head:#4B286D;--band:#4B286D;--band-text:#FFFFFF;--band-muted:#E4D9EE;
+  --accent:#007F4A;--accent-thin:#66CC00;--good-bg:#E6F4EC;
+  --bad:#c0392b;--bad-bg:#FBEAE8;
+  --code-bg:#F2F3ED;--focus:#4B286D;
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+    --text:#ECEAF0;--muted:#B0AAB9;
+    --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+    --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+    --bad:#FF7B6B;--bad-bg:#3A1B19;
+    --code-bg:#241E2E;--focus:#CDB4EA;
+    color-scheme:dark;
+  }
+}
+:root[data-theme="dark"]{
+  --bg:#14101A;--panel:#1C1724;--alt:#241E2E;--line:#3A3047;
+  --text:#ECEAF0;--muted:#B0AAB9;
+  --head:#CDB4EA;--band:#2E1A44;--band-text:#FFFFFF;--band-muted:#CDB4EA;
+  --accent:#3DD68C;--accent-thin:#66CC00;--good-bg:#12291F;
+  --bad:#FF7B6B;--bad-bg:#3A1B19;
+  --code-bg:#241E2E;--focus:#CDB4EA;
+  color-scheme:dark;
+}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--text);font-family:"Source Sans 3",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;font-size:17px;line-height:1.6}
+.band{background:var(--band);color:var(--band-text);border-bottom:4px solid var(--accent-thin);padding-block:28px;padding-inline:16px}
+.band-in,.wrap{max-width:1000px;margin-inline:auto}
+.band h1{margin:0 0 6px;font-size:clamp(1.6rem,5vw,2.2rem);line-height:1.15;color:var(--band-text);text-wrap:balance}
+.band p{margin:0;color:var(--band-muted);max-width:70ch}
+.wrap{padding-inline:16px;padding-block:24px 64px}
+h2{color:var(--head);font-size:1.6rem;line-height:1.2;margin:48px 0 12px;padding-bottom:6px;border-bottom:1px solid var(--line);text-wrap:balance;scroll-margin-top:12px}
+h3{color:var(--head);font-size:1.15rem;margin:28px 0 8px;text-wrap:balance}
+p,li{max-width:72ch}
+p{margin:0 0 12px}
+ul,ol{margin:0 0 14px;padding-left:1.3em}
+li{margin-bottom:4px}
+a{color:var(--accent)}
+a:focus-visible,summary:focus-visible,.scroll:focus-visible{outline:3px solid var(--focus);outline-offset:2px;border-radius:2px}
+code,pre{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,Consolas,monospace}
+code{background:var(--code-bg);padding:1px 5px;border-radius:3px;font-size:.86em;overflow-wrap:anywhere}
+.scroll{overflow-x:auto;margin:0 0 18px;border:1px solid var(--line);border-radius:6px;background:var(--panel)}
+.scroll table{border:0;margin:0}
+table{border-collapse:collapse;width:100%;font-size:.92rem;min-width:560px}
+th,td{padding:8px 10px;text-align:left;vertical-align:top;border-bottom:1px solid var(--line)}
+th{background:var(--alt);color:var(--head);font-weight:700;white-space:nowrap}
+tr:last-child td{border-bottom:0}
+td.num,th.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap}
+td,th{font-variant-numeric:tabular-nums}
+pre.mermaid{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px;overflow-x:auto;margin:0 0 18px;font-size:.85rem;line-height:1.4}
+pre.formula{background:var(--code-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:12px 14px;overflow-x:auto;margin:0 0 14px;font-size:.85rem;line-height:1.5;white-space:pre}
+.glance{background:var(--good-bg);border:1px solid var(--line);border-left:4px solid var(--accent);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.glance h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.glance ul{margin:0}
+.toc{background:var(--panel);border:1px solid var(--line);border-radius:6px;padding:14px 18px;margin:0 0 24px}
+.toc h2{margin:0 0 8px;font-size:1.1rem;border:0;padding:0}
+.toc ol{columns:2 260px;column-gap:28px;margin:0}
+.toc li{break-inside:avoid}
+.note{background:var(--alt);border:1px solid var(--line);border-radius:6px;padding:10px 14px;margin:0 0 16px}
+.note.warn{border-left:4px solid var(--bad);background:var(--bad-bg)}
+.tag{display:inline-block;font-size:.75rem;font-weight:700;padding:1px 8px;border-radius:99px;border:1px solid var(--line);background:var(--alt);color:var(--muted);vertical-align:middle}
+.tag.live{color:var(--accent);border-color:var(--accent)}
+.tag.plan{color:var(--bad);border-color:var(--bad)}
+.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;margin:0 0 18px}
+.card{background:var(--panel);border:1px solid var(--line);border-top:4px solid var(--accent);border-radius:6px;padding:14px 16px;min-width:0}
+.card h3{margin:0 0 8px;font-size:1.05rem}
+.card dl{margin:0}
+.card dt{font-size:.78rem;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:700;margin-top:8px}
+.card dd{margin:0;overflow-wrap:anywhere}
+.card dt.bad{color:var(--bad)}
+.refs code{display:inline-block}
+footer{color:var(--muted);font-size:.85rem;margin-top:40px;border-top:1px solid var(--line);padding-top:12px}
+</style>
+
+<header class="band"><div class="band-in">
+<h1>RTA Board Engineering Guide</h1>
+<p>For engineers new to the project. It explains what the board does, where each number comes from, and what we learned from real floor data.</p>
+</div></header>
+
+<div class="wrap">
+
+<div class="glance">
+<h2>At a glance</h2>
+<ul>
+<li>The RTA Board shows only exceptions. It joins Verint (schedule and activity), GTT (clock-in and clock-out) and, later, Workday.</li>
+<li>Six alert rules with three severities replace the ANA Bot's single, unranked alert. Only Sev 1 goes straight to the Team Lead.</li>
+<li>Every KPI is a ratio of sums over the elapsed published schedule, measured as of the Verint capture time, not the wall clock.</li>
+<li>Verint has no API access yet. A Chrome extension captures data in the RTA's browser and pushes it to the board every 30 seconds.</li>
+<li>Most bugs so far were data-shape problems, not code problems. Section 8 lists eight, each with its measured impact.</li>
+</ul>
+</div>
+
+<nav class="toc" aria-label="Contents">
+<h2>Contents</h2>
+<ol>
+<li><a href="#why">Why this exists</a></li>
+<li><a href="#systems">Systems map</a></li>
+<li><a href="#data">Data captured</a></li>
+<li><a href="#pipeline">Pipeline</a></li>
+<li><a href="#alerts">Alert rules</a></li>
+<li><a href="#kpis">KPIs and formulas</a></li>
+<li><a href="#finance">Scorecard and finance</a></li>
+<li><a href="#lessons">Eight lessons from real data</a></li>
+<li><a href="#gaps">Known gaps and roadmap</a></li>
+<li><a href="#refs">References</a></li>
+</ol>
+</nav>
+
+<h2 id="why">1. Why this exists</h2>
+<p>The project started from a floor visit to the El Salvador and Guatemala sites. The Real-Time Analysts (RTAs) and Team Leads (TLs) described the same problems.</p>
+<ul>
+<li><strong>Chat overload.</strong> The alert group chats carry "100 messages nobody reads".</li>
+<li><strong>TLs ignore group chats.</strong> An alert for the whole floor belongs to nobody.</li>
+<li><strong>False alerts erode trust.</strong> Approved absences and short breaks show up as violations, so people stop reading all alerts.</li>
+</ul>
+<p>The baseline is the ANA Bot. It sends one alert type every 15 minutes. The type is "GTT activity differs from the Verint schedule". It has no severity, no acknowledgement and no escalation. The board replaces that with rules, severities, one card per agent, a TL screen with an "On it" button, and an RTA floor view.</p>
+<p>The board has three screens.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Screen</th><th>Audience</th><th>Question it answers</th></tr></thead>
+<tbody>
+<tr><td>My team</td><td>Team Lead</td><td>Which of my people need me now? One sentence and one button per row.</td></tr>
+<tr><td>Floor</td><td>RTA (also wall mode)</td><td>Where is it burning, and which TL has not acted? One row per TL, worst first.</td></tr>
+<tr><td>Details</td><td>WFM and engineers</td><td>How the numbers are made: KPI tiles, shrinkage funnel, data checks, data sources.</td></tr>
+</tbody></table></div>
+
+<h2 id="systems">2. Systems map</h2>
+<p>The board runs as React and Vite on port 5174. It reads two live feeds and one planned feed.</p>
+<pre class="mermaid">
+flowchart LR
+  subgraph LIVE["Live today"]
+    V["Verint WFM (browser SSO)"]
+    X["RTA Live Bridge extension (Chrome MV3, runs in Brave)"]
+    G["GTT post-mortem report API (Cloud Run)"]
+    L["local_api.py (Starlette, port 5050, proxied as /api)"]
+    B["RTA Board V2 (React + Vite, port 5174)"]
+    C["Google Chat incoming webhook"]
+  end
+  subgraph PLANNED["Planned"]
+    W["Workday (approved absences, trainee flag)"]
+    S["Server-side Verint access"]
+    A["Chat app for direct TL messages"]
+  end
+  V -->|"calendar-filter responses"| X
+  X -->|"window.postMessage cards every 30 s"| B
+  B -->|"set-lob, trigger-capture, push-now"| X
+  G -->|"service account"| L
+  L -->|"POST /gtt-events, polled every 5 min"| B
+  B -->|"POST /dispatch-alert"| L
+  L --> C
+  W -.->|"IDs already arrive via GTT"| G
+  W -.-> B
+  S -.->|"replaces the extension"| B
+  A -.->|"replaces the webhook"| C
+</pre>
+<p>Three notes on this map.</p>
+<ul>
+<li>Verint has no API credentials yet. The extension reuses the RTA's own logged-in browser session.</li>
+<li>Workday is not connected. Its Workday ID reaches us as a column in each GTT row.</li>
+<li>When capture moves server-side, only <code>src/data/bridge.ts</code> should change.</li>
+</ul>
+
+<h3>Local API routes</h3>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Route</th><th>Purpose</th></tr></thead>
+<tbody>
+<tr><td><code>POST /gtt-events</code></td><td>Fetches the GTT report for one functional area and day. Returns clock events only (<code>clock_in</code>, <code>clock_out</code>) with Workday ID, employee, supervisor and a UTC epoch time. Email and IP are never returned.</td></tr>
+<tr><td><code>POST /snapshot</code></td><td>The board posts what it received after each extension capture, so engineers can read it back for diagnosis. The files hold agent names and stay out of git.</td></tr>
+<tr><td><code>POST /generate-report</code></td><td>Runs the GTT &times; Verint reconciliation for one account and day (GTT fetch, name match, rule-based insights) and writes <code>runs/reports/reconciliation_&lt;ACCOUNT&gt;_&lt;date&gt;.json</code>. The Reports screen reads that file.</td></tr>
+<tr><td><code>POST /dispatch-alert</code></td><td>Posts a Chat card or text to the account's Google Chat space. The webhook URL lives server-side in the <code>GCHAT_WEBHOOK_&lt;ACCOUNT&gt;</code> environment variable. Without one it returns <code>ok: false</code> and the send stays simulated.</td></tr>
+</tbody></table></div>
+
+<h2 id="data">3. Data captured</h2>
+<p>All examples below are synthetic. The field catalogue lives in <code>RTA_Board_V2/src/data/lineage.ts</code>. The Details screen and <code>gtt-verint-data-lineage.html</code> render the same data.</p>
+
+<h3>3.1 Verint structure</h3>
+<p>The extension reads the calendar-filter response. It holds one <code>resourceData[]</code> entry per employee, with <code>publishedSchedule</code>, <code>draftSchedule</code> and <code>actualSchedule</code> events.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>eventType</th><th>Meaning</th><th class="num">Precedence</th></tr></thead>
+<tbody>
+<tr><td><code>ShiftAssignment</code></td><td>Container for the whole shift. Counts as work.</td><td class="num">1</td></tr>
+<tr><td><code>ShiftEventAssignment</code></td><td>Activity inside the shift. <code>isPaid</code> true is a paid break. <code>isPaid</code> false is unpaid lunch.</td><td class="num">5 / 10</td></tr>
+<tr><td><code>CalendarEvent</code></td><td>Meetings placed on top of the shift.</td><td class="num">20</td></tr>
+<tr><td><code>TimeOffEvent</code></td><td>Planned absence.</td><td class="num">70</td></tr>
+</tbody></table></div>
+<p><code>parse.js</code> resolves the events by precedence. At each instant the highest precedence wins. The result is a list of segments of kind <code>work</code>, <code>paid</code>, <code>unpaid</code> or <code>off</code>. The extension sends them as <code>published_segments_json</code>.</p>
+<p><code>actualSchedule</code> events give the actual <code>shift_start</code> and <code>shift_end</code>. Verint adds an activity only when it closes, so <code>shift_end</code> is the end of the last closed activity. <code>adherenceSummary</code> is one interval for the whole day, so it is not "as of now". <code>workResourceDetails.organizationName</code> is the real line of business. It follows the pattern <code>BPO_&lt;Client&gt;_&lt;Site&gt;_&lt;LOB&gt;</code>.</p>
+
+<h3>3.2 Verint, via the extension</h3>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Field</th><th>Where it comes from</th><th>Synthetic example</th><th>Used by</th></tr></thead>
+<tbody>
+<tr><td><code>name</code></td><td>Resource name, "Last, First"</td><td>Méndez, Carlos</td><td>Join to GTT</td></tr>
+<tr><td><code>organization</code></td><td><code>workResourceDetails.organizationName</code></td><td>BPO_Global_ACME_SITE1_Support</td><td>Account filter, LOB label</td></tr>
+<tr><td><code>scheduled_activity</code>, <code>actual_activity</code></td><td>Published schedule, live activity</td><td>New ticket / Lunch</td><td>A2, A3, A6</td></tr>
+<tr><td><code>out_of_adherence</code></td><td>Adherence violations, "H:MM:SS"</td><td>0:19:05</td><td>A2 severity</td></tr>
+<tr><td><code>scheduled_shift_start</code>, <code>scheduled_shift_end</code></td><td>Published schedule bounds</td><td>2026-10-09T13:00:00Z</td><td>A1, A4, KPI base</td></tr>
+<tr><td><code>shift_start</code>, <code>shift_end</code></td><td>Earliest and latest event in <code>actualSchedule</code></td><td>2026-10-09T13:01:10Z</td><td>"Started" test, per-agent as-of time</td></tr>
+<tr><td><code>productive_paid_minutes</code></td><td>Sum of <code>durationMinutes</code> where <code>isPaid</code></td><td class="num">178</td><td>Productive hours</td></tr>
+<tr><td><code>schedule_state</code></td><td>published, draft_only or none</td><td>published</td><td>Unpublished exclusion</td></tr>
+<tr><td><code>published_segments_json</code></td><td>Precedence-resolved segments</td><td><code>[{"k":"paid","s":…,"e":…}]</code></td><td>Paid base, time off</td></tr>
+<tr><td><code>adherence_minutes</code>, <code>ooa_minutes</code></td><td>Adherence summary</td><td>131 / 48</td><td>Adherence KPI</td></tr>
+</tbody></table></div>
+<p>The roster row contract is the <code>RosterRow</code> interface in <code>RTA_Board_V2/src/data/bridge.ts</code>. The board converts rows to agents in <code>rosterToAgents</code>.</p>
+
+<h3>3.3 GTT (Global Time Tracker)</h3>
+<p>GTT is the Telus clock-in and clock-out system. A Cloud Run post-mortem report API returns it through a service account. Each row has 22 columns. The adapter is <code>POC_Redefined/gtt_adapter.py</code>.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Field</th><th class="num">Column</th><th>Synthetic example</th><th>Used by</th></tr></thead>
+<tbody>
+<tr><td>site</td><td class="num">0</td><td>SV - Example Site</td><td>Account filter</td></tr>
+<tr><td>subgroup</td><td class="num">6</td><td>Example Account</td><td>GTT's own LOB label (not the Verint LOB)</td></tr>
+<tr><td>event type (aux)</td><td class="num">7</td><td>clock_in</td><td>A1, A4. The board keeps only <code>clock_in</code> and <code>clock_out</code>.</td></tr>
+<tr><td>start date, time (request timezone)</td><td class="num">8, 9</td><td>2026-10-09 05:45:15</td><td>Display only</td></tr>
+<tr><td>duration</td><td class="num">12</td><td>00:15:02</td><td>Not used by the board</td></tr>
+<tr><td>start date, time (UTC)</td><td class="num">17, 18</td><td>2026-10-09 11:45:15</td><td>Event time for joins with Verint</td></tr>
+<tr><td>startoftimeblock</td><td class="num">21</td><td>1760010315782</td><td>Epoch ms, not parsed yet</td></tr>
+</tbody></table></div>
+<div class="note warn"><strong>Past bug.</strong> An early version read columns 12 and 13 as the UTC date and time. Those are duration and IP. The adapter now reads 17 and 18, and <code>POC_Redefined/tests/test_gtt_adapter.py</code> covers it.</div>
+
+<h3>3.4 Workday, via GTT</h3>
+<p>Workday is not connected. GTT carries a few HR master columns on every row, so some Workday data arrives that way.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Field</th><th class="num">Column</th><th>Synthetic example</th><th>Used by</th></tr></thead>
+<tbody>
+<tr><td>workdayId</td><td class="num">2</td><td>10000001</td><td>Canonical join key</td></tr>
+<tr><td>employee</td><td class="num">3</td><td>Carlos Méndez Rivas</td><td>Name join fallback. GTT writes "First Middle Last Last2".</td></tr>
+<tr><td>supervisor</td><td class="num">4</td><td>Supervisor, Example</td><td>The agent's TL today. Alert routing key.</td></tr>
+<tr><td>costcenter</td><td class="num">5</td><td>CC-700-EXAMPLE</td><td>Account cross-check</td></tr>
+<tr><td>email</td><td class="num">1</td><td>(personal data)</td><td>Never logged and never sent to the board</td></tr>
+</tbody></table></div>
+<p>Approved absences and the trainee flag are planned Workday inputs. The code already has the fields (<code>exception</code>, <code>trainee</code> on <code>WorkdayRecord</code>), so the rules work as soon as a connector fills them.</p>
+
+<h3>3.5 Derived</h3>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Field</th><th>How it is computed</th><th>Example</th><th>Used by</th></tr></thead>
+<tbody>
+<tr><td>join key</td><td>Workday ID, else exact name, else loose name (below)</td><td>name_loose</td><td>Every screen, provenance</td></tr>
+<tr><td>planned and actual segments</td><td>Planned segments from the published schedule, actual segments from <code>actualSchedule</code></td><td>list of {label, start, end, work}</td><td>A3, repetition, productive minutes</td></tr>
+<tr><td>productive minutes</td><td>Minutes where the actual label equals the planned label and the plan is work</td><td class="num">127</td><td>KPIs</td></tr>
+<tr><td>alert (kind, severity)</td><td>Rules A1 to A6 in <code>exceptions.ts</code></td><td>ooa, Sev 1</td><td>Board</td></tr>
+</tbody></table></div>
+
+<h3>3.6 The join</h3>
+<p>Verint writes "Last, First". GTT writes "First Middle Last Last2". The board joins in this order.</p>
+<ol>
+<li><strong>Workday ID</strong> when the Verint row carries one. It does not yet, so this path is dormant.</li>
+<li><strong>Exact name-token match.</strong> Both names are split into words and sorted, then compared.</li>
+<li><strong>Loose match.</strong> Accents are ignored. The two names must share at least 2 words. The pair must also be each other's unique best. A tie on either side never matches.</li>
+</ol>
+<p>Exact matching alone linked 20 of 87 clock-ins. See lesson 7 for the loose rule's validation.</p>
+
+<h2 id="pipeline">4. Pipeline</h2>
+<p>This is one full cycle, from the RTA's click to the numbers on screen.</p>
+<pre class="mermaid">
+sequenceDiagram
+  participant RTA as RTA in browser
+  participant INJ as inject.js (page world)
+  participant CV as content_verint.js
+  participant BG as background.js
+  participant CC as content_cc.js
+  participant BD as Board (tab on :5174)
+  participant API as local_api.py
+  RTA->>BD: Pick account (set-lob)
+  BD->>CC: postMessage set-lob
+  CC->>BG: set LOB
+  RTA->>INJ: Full Capture
+  INJ->>INJ: Census pages (useAllEmployees = true)
+  INJ->>INJ: Targeted chunks of 50 ids, 800 ms apart
+  INJ->>CV: Calendar-filter responses
+  CV->>BG: Relay captures
+  BG->>BG: rebuild() with parse.js extractRoster, filter by ACCOUNT_ORGS
+  loop every 30 s
+    BD->>CC: push-now
+    CC->>BG: push-now
+    BG->>CC: roster
+    CC->>BD: postMessage kind cards, roster, syncedAt
+  end
+  loop every 5 min
+    BD->>API: POST /gtt-events
+    API-->>BD: clock_in / clock_out events
+  end
+  BD->>BD: joinAll, buildBoard (alerts), computeKpis (as of capture)
+</pre>
+<ol>
+<li><strong>Tee.</strong> <code>inject.js</code> runs in the page world. It copies Verint's calendar-filter responses as the page receives them.</li>
+<li><strong>Full Capture.</strong> <code>runFullCapture</code> pages through a census with <code>useAllEmployees = true</code> until a page returns fewer than 50 rows. It then pulls schedule and adherence detail for every indexed id in chunks of 50, with 800 ms between calls, one at a time.</li>
+<li><strong>Rebuild.</strong> <code>background.js</code> keeps captures per LOB and calls <code>extractRoster</code> from <code>parse.js</code>. It keeps only rows whose Verint organization matches the account in <code>ACCOUNT_ORGS</code>.</li>
+<li><strong>Push.</strong> The extension posts <code>{__rtaLiveBridge:true, kind:"cards", roster, syncedAt}</code> to the board tab through <code>content_cc.js</code>. The board sends <code>set-lob</code>, <code>trigger-capture</code> and <code>push-now</code> back the same way.</li>
+<li><strong>Compute.</strong> The board re-runs the alert rules on a 15-second clock, so "for N min" keeps counting between captures. The KPIs use the capture time as their "now" and only move when a new capture arrives (lesson 4).</li>
+</ol>
+
+<h2 id="alerts">5. Alert rules</h2>
+<p>The rules live in <code>RTA_Board_V2/src/domain/exceptions.ts</code>. Every threshold is one field in <code>DEFAULT</code>. An account can override fields in <code>ACCOUNTS</code>. The full rationale is in <code>RTA_Board_V2/docs/ALERT_RULES.md</code>.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>ID</th><th>Alert</th><th>Trigger</th><th>Sev 3</th><th>Sev 2</th><th>Sev 1</th></tr></thead>
+<tbody>
+<tr><td>A1</td><td>Not clocked in</td><td>Past scheduled start, no GTT <code>clock_in</code>, no Verint activity. Suppressed by a Workday exception, or by Verint time off covering now or a full-day time off.</td><td>none</td><td>3 min or more</td><td>10 min or more</td></tr>
+<tr><td>A1b</td><td>No-show</td><td>A1 still true after the scheduled end. Grey. Not counted toward A5.</td><td>none</td><td>always</td><td>none</td></tr>
+<tr><td>A2</td><td>Out of adherence</td><td>Verint actual differs from scheduled, after a 5-minute buffer.</td><td>5 to 14 min</td><td>15 to 29 min</td><td>30 min or more</td></tr>
+<tr><td>A3</td><td>Break or lunch overrun</td><td>Still on a planned break that has ended, beyond the 4:59 waiver.</td><td>5 to 9 min over</td><td>10 to 29 min over</td><td>30 min or more over</td></tr>
+<tr><td>A4</td><td>Not clocked out</td><td>Past scheduled end plus 5 minutes, still clocked in on GTT.</td><td>none</td><td>5 to 29 min</td><td>30 min or more</td></tr>
+<tr><td>A5</td><td>LOB incident</td><td>At least 5 agents and at least 20% of one LOB at Sev 1 or 2. One incident replaces the individual alerts. The RTA can declare an outage, which suppresses the LOB.</td><td>none</td><td>none</td><td>one incident alert</td></tr>
+<tr><td>A6</td><td>Unmapped activity</td><td>A Verint activity label is not in the activity map. Routed to WFM, not to the TL.</td><td>none</td><td>none</td><td>none (data-quality chip)</td></tr>
+</tbody></table></div>
+
+<h3>Modifiers and routing</h3>
+<ul>
+<li><strong>Repetition.</strong> The 3rd out-of-adherence episode of the day (each at least 5 minutes) bumps A2 or A3 up one level.</li>
+<li><strong>One card per agent.</strong> If several rules fire, the worst severity wins and the others are listed on the card.</li>
+<li><strong>Suppression.</strong> Trainees, Workday-excused agents and RTA-declared outages are counted but get no row.</li>
+<li><strong>Delivery.</strong> Sev 1 goes directly to the TL, automatically. Sev 2 appears in the TL digest. Sev 3 stays on the board.</li>
+<li><strong>Escalation.</strong> It is opt-in per account, and EPIC has it on. A Sev 1 not acknowledged after 5 minutes goes to the Ops Manager. Still unacknowledged 10 minutes later (15 in total), it goes to the WFM Director.</li>
+<li><strong>Acknowledgement.</strong> The TL presses "On it". A reason is optional. The list comes from the ANA SOP: VPN issue, GTT glitch, Windows glitch, power or internet outage, hardware, long chat or call, approved but not in the system, other. A reason explains an alert. It never reclassifies it for the scorecard.</li>
+</ul>
+
+<h3>Life of one alert</h3>
+<pre class="mermaid">
+stateDiagram-v2
+  [*] --> Detected: rule fires on a capture
+  Detected --> BoardOnly: Sev 3
+  Detected --> InDigest: Sev 2
+  Detected --> Sent: Sev 1, direct alert to the TL
+  Sent --> OnIt: TL presses On it
+  Sent --> EscalatedOps: no ack after 5 min
+  EscalatedOps --> OnIt: TL or manager acks
+  EscalatedOps --> EscalatedDirector: still no ack at 15 min
+  EscalatedDirector --> OnIt: ack
+  InDigest --> OnIt: TL presses On it
+  BoardOnly --> Resolved: condition clears
+  InDigest --> Resolved: condition clears
+  Sent --> Resolved: condition clears
+  EscalatedOps --> Resolved: condition clears
+  EscalatedDirector --> Resolved: condition clears
+  OnIt --> Resolved: condition clears
+  Resolved --> [*]
+</pre>
+<p>"Resolved" means the rule stops firing on a later capture. The board has no manual close. Acknowledgement and send times are held in memory in this version, so a page reload clears them.</p>
+
+<h2 id="kpis">6. KPIs and formulas</h2>
+<p>The code is <code>RTA_Board_V2/src/domain/kpis.ts</code>. Every figure is a ratio of sums over the elapsed part of today's published schedule. This follows the scorecard SOP. It is never an average of per-agent percentages.</p>
+
+<h3>Ground rules</h3>
+<ul>
+<li><strong>Trainees</strong> are excluded.</li>
+<li><strong>Unpublished schedules</strong> are excluded, because there is no base to measure against. They are counted and shown.</li>
+<li><strong>Base</strong> is the paid published minutes so far (work plus paid segments) plus planned time off so far. It is clipped to the start of Verint's capture window, estimated as the earliest Verint shift start in the roster.</li>
+<li><strong>As-of time per agent.</strong> It is the agent's last closed Verint activity when that is 30 minutes old or less. Otherwise it is the capture time. An agent silent for more than 30 minutes counts as shrink.</li>
+<li><strong>"Now" is the capture time</strong>, not the wall clock.</li>
+</ul>
+
+<h3>Formulas</h3>
+<pre class="formula">Attendance  = present / (present + unexplained absent)
+              approved absences (Workday exception, or Verint time off with no paid time) are left out
+
+Adherence   = in-adherence min / (in + out)
+              out = min(paid so far, Verint out-of-adherence minutes today)
+              in  = paid so far - out
+
+Productive hours = sum over present agents of min(paid elapsed, productive minutes) / 60
+              productive minutes = planned/actual label match, else Verint productive paid minutes
+
+Shrinkage   = (absence minutes + in-shift non-productive minutes) / base
+              absence minutes   = elapsed time of agents who never started, plus time off of those who did
+              in-shift non-prod = paid elapsed - productive minutes, for present agents
+              base              = sum of (paid elapsed + planned time off elapsed) over due agents
+
+Most common violation = the most frequent label among the active exceptions on the board</pre>
+<p>A "due" agent has a published schedule and either a started shift (Verint activity or GTT clock-in) or a scheduled start that has passed. Present means the agent has a Verint activity or a GTT clock-in. If GTT shows a clock-in but Verint shows no activity, the agent is present with zero productive minutes. The funnel counts that case separately as "GTT only".</p>
+
+<h3>The shrinkage funnel</h3>
+<p>The funnel records each step so any shrinkage figure can be traced. The counts below are from a real capture of EPIC El Salvador on 2026-10-09 at 13:18 local time. Counts only, no names.</p>
+<pre class="mermaid">
+flowchart TD
+  A["264 agents in roster"] --> B["174 with a published schedule"]
+  A --> U["90 unpublished: excluded and counted"]
+  B --> C["166 due: shift started or start time passed"]
+  C --> D["156 presenting activity"]
+  C --> E["8 unexplained absent"]
+  C --> F["2 approved absent"]
+  D --> G["323.5 productive hours of 379.8 scheduled hours"]
+  G --> H["Shrinkage 9.3%, attendance 95.1%"]
+</pre>
+<p>Attendance checks out: 156 / (156 + 8) = 95.1%. The 379.8 hours is the whole base, which includes the elapsed time of the 10 agents who were absent.</p>
+
+<h2 id="finance">7. Scorecard and finance</h2>
+<h3>Which scorecard metrics each KPI feeds</h3>
+<p>The WFM Weekly Scorecard has about 35 metrics. Everything descends from base scheduled minutes, which is Verint's published schedule. The mapping below follows <code>POC_Redefined/Product_and_Architecture_docs/SCORECARD_DATA_PRIORITIES.md</code> and <code>lineage.ts</code>.</p>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Board KPI</th><th>Scorecard metrics it feeds</th><th>Priority rank</th><th>Caveat</th></tr></thead>
+<tbody>
+<tr><td>Base (paid published minutes)</td><td>Scheduled Loss %, Attended Loss %, Total Shrink, Absenteeism (all variants), Onsite, Remote</td><td class="num">1</td><td>The scorecard base is a normalized 40-hour week (2,400 min). The board base is today's elapsed minutes.</td></tr>
+<tr><td>Attendance and absence minutes</td><td>Absenteeism, Attended Loss %, Total Shrink, Billable Loss %</td><td class="num">2</td><td>Partial-shift minutes and the Workday ID join are open.</td></tr>
+<tr><td>Shrinkage</td><td>Total Shrink</td><td class="num">1 to 3</td><td>The scorecard version also needs billable and non-billable online shrink from aux minutes.</td></tr>
+<tr><td>Productive hours</td><td>Payable Enabled FTE, Billable Hours, Staffing Loss %, Book to Bill</td><td class="num">4</td><td>A proxy only. It must never feed invoicing.</td></tr>
+<tr><td>Adherence</td><td>LOB adherence in the report. Drives alert severity.</td><td class="num">n/a</td><td>Not a scorecard tile in the priorities document.</td></tr>
+<tr><td>Trainee flag (planned)</td><td>Trainee Loss %, and the exclusion rule for shrink</td><td class="num">1</td><td>Needs Workday.</td></tr>
+</tbody></table></div>
+
+<h3>What the numbers mean for finance</h3>
+<ul>
+<li><strong>Headcount.</strong> Shrinkage sets required headcount: <code>FTE = workload hours / (1 - shrinkage)</code>. A higher shrinkage needs more people for the same work.</li>
+<li><strong>Paid time with no output.</strong> Paid minutes that are not productive are cost with no billable output.</li>
+<li><strong>Contract exposure.</strong> Unplanned absence and adherence drive SLA and contract risk. One account has an unplanned-absence target of "below 9%".</li>
+<li><strong>Pay and service.</strong> Adherence also drives agent bonuses and interval service level.</li>
+</ul>
+<div class="note"><strong>ILLUSTRATIVE example, not a forecast.</strong> Take 150 agents scheduled for 9 paid hours each. That is 1,350 paid hours per day. Each shrinkage point is 13.5 hours per day, about 1.5 FTE-days. At an illustrative loaded cost of $15 per hour, each point is about $200 per day. Real rates vary by geography.</div>
+
+<h2 id="lessons">8. Eight lessons from real data</h2>
+<p>All eight came from captures of a live floor. Each shows the symptom, the cause, the fix and the measured impact.</p>
+<div class="cards">
+
+<div class="card"><h3>1. Unpublished schedules</h3><dl>
+<dt class="bad">Symptom</dt><dd>Ratios looked wrong early in the day.</dd>
+<dt>Cause</dt><dd>90 of 264 agents had no published schedule (day off or draft). Counting them distorts attendance, productive hours and shrinkage.</dd>
+<dt>Fix</dt><dd>Exclude them from every KPI and show the count.</dd>
+<dt>Impact</dt><dd>The base is now 174 agents with a real schedule.</dd></dl></div>
+
+<div class="card"><h3>2. Unpaid lunch in the base</h3><dl>
+<dt class="bad">Symptom</dt><dd>Base minutes were too high.</dd>
+<dt>Cause</dt><dd>The first-to-last event span includes unpaid lunch. It was 11.9% of the shift span on the June capture.</dd>
+<dt>Fix</dt><dd>The extension now sends paid segments. The base uses them. The span is only a fallback, and the funnel counts it.</dd>
+<dt>Impact</dt><dd>Unpaid lunch no longer counts as scheduled work time.</dd></dl></div>
+
+<div class="card"><h3>3. Verint capture window</h3><dl>
+<dt class="bad">Symptom</dt><dd>20 overnight agents showed 66% non-productive. Shrinkage read 49%.</dd>
+<dt>Cause</dt><dd>Overnight shifts were published from 02:00Z, but Verint actuals begin at 07:00Z. Five hours of base had no possible activity.</dd>
+<dt>Fix</dt><dd>Start the base at the window start, estimated as the earliest Verint shift start.</dd>
+<dt>Impact</dt><dd>Shrinkage fell from 49% to 9.8%.</dd></dl></div>
+
+<div class="card"><h3>4. Wall-clock creep</h3><dl>
+<dt class="bad">Symptom</dt><dd>Shrinkage climbed on its own between captures.</dd>
+<dt>Cause</dt><dd>KPIs were recomputed every 15 seconds with the wall clock. Productive minutes only change when a new capture arrives.</dd>
+<dt>Fix</dt><dd>Compute KPIs as of the capture time.</dd>
+<dt>Impact</dt><dd>The headline holds still between captures.</dd></dl></div>
+
+<div class="card"><h3>5. Verint posting lag</h3><dl>
+<dt class="bad">Symptom</dt><dd>Shrinkage read 14.8%.</dd>
+<dt>Cause</dt><dd>Verint adds an activity only when it closes, in blocks of about 15 minutes. 83 of 156 agents were 15 to 17 minutes behind the capture.</dd>
+<dt>Fix</dt><dd>Measure each agent up to the last closed activity, if it is 30 minutes old or less.</dd>
+<dt>Impact</dt><dd>14.8% became 9.3%. Across 8 captures it stayed between 9.1% and 9.9%.</dd></dl></div>
+
+<div class="card"><h3>6. Whole-floor capture</h3><dl>
+<dt class="bad">Symptom</dt><dd>The EPIC roster held other clients' agents.</dd>
+<dt>Cause</dt><dd>Full Capture reads every client the Verint user can see. 11,705 alerts were staged. 163 of 314 roster rows (52%) belonged to other clients.</dd>
+<dt>Fix</dt><dd>Filter by Verint organization (<code>ACCOUNT_ORGS</code>).</dd>
+<dt>Impact</dt><dd>The board sees only the account. Verint still serves the whole floor. Fewer calls and a server-side version are in the backlog.</dd></dl></div>
+
+<div class="card"><h3>7. Name join</h3><dl>
+<dt class="bad">Symptom</dt><dd>Most clock-ins did not match a Verint agent.</dd>
+<dt>Cause</dt><dd>Verint writes "Last, First", GTT writes "First Middle Last Last2". Exact keys matched 20 of 87 GTT clock-ins.</dd>
+<dt>Fix</dt><dd>Add the loose, unique-best match with accents ignored and at least 2 shared words.</dd>
+<dt>Impact</dt><dd>87 of 87 matched. Of 67 loose matches checked, 66 clocked in within 15 minutes of the Verint start. The outlier matched its schedule to the second.</dd></dl></div>
+
+<div class="card"><h3>8. Time off and no-shows</h3><dl>
+<dt class="bad">Symptom</dt><dd>Agents on leave were alerted, and missed shifts stayed red for hours.</dd>
+<dt>Cause</dt><dd>2 agents on full-day Verint time off fired "not clocked in". A finished, missed shift kept firing A1.</dd>
+<dt>Fix</dt><dd>Suppress A1 for time off. After the shift ends, show a grey no-show: "time off not in Verint?".</dd>
+<dt>Impact</dt><dd>No false red rows. Shrinkage stayed at 8.9% because the KPIs already classified both cases correctly.</dd></dl></div>
+
+</div>
+
+<h2 id="gaps">9. Known gaps and roadmap</h2>
+<div class="scroll" tabindex="0"><table>
+<thead><tr><th>Gap</th><th>Effect</th><th>Next step</th></tr></thead>
+<tbody>
+<tr><td>Workday not connected</td><td>No approved absences, no trainee flag, no IDs in Verint rows. The join falls back to names.</td><td>Connect Workday. The Workday ID then becomes the key and the loose match can go.</td></tr>
+<tr><td>Productive includes paid breaks</td><td>Shrinkage is understated until the contract definition is agreed.</td><td>Agree the definition with operations. Both paid and work minutes are already captured.</td></tr>
+<tr><td>Window start is estimated</td><td>It is the earliest Verint shift start. It can be wrong on a day with few starts.</td><td>Send the real window start from the extension.</td></tr>
+<tr><td>30-minute lag threshold</td><td>It comes from one capture. Another tenant may post at a different pace.</td><td>Tune it on more captures.</td></tr>
+<tr><td>TL identity</td><td>The TL is the GTT supervisor. There is no login.</td><td>Add sign-in and a TL directory.</td></tr>
+<tr><td>Chat delivery</td><td>The Google Chat incoming webhook posts to the account's space. It cannot message one TL.</td><td>Build a Chat app for direct messages.</td></tr>
+<tr><td>Browser dependency</td><td>Capture needs an RTA's logged-in browser. Full Capture reads the whole floor.</td><td>Server-side Verint access, with one census and per-account pulls. Skip chunks for other organizations first.</td></tr>
+<tr><td>Acknowledgements in memory</td><td>A reload clears them. Nothing is written back to a store.</td><td>Persist acknowledgements and reasons. They become tuning data.</td></tr>
+</tbody></table></div>
+
+<h2 id="refs">10. References</h2>
+<p>All paths are relative to the repository root.</p>
+<div class="refs">
+<h3>Documents</h3>
+<ul>
+<li><code>RTA_Board_V2/docs/ALERT_RULES.md</code></li>
+<li><code>RTA_Board_V2/docs/BACKLOG.md</code></li>
+<li><code>RTA_Board_V2/README.md</code></li>
+<li><code>POC_Redefined/Product_and_Architecture_docs/SCORECARD_DATA_PRIORITIES.md</code></li>
+<li><code>POC_Redefined/Product_and_Architecture_docs/data-sources-reference.html</code></li>
+<li><code>POC_Redefined/Product_and_Architecture_docs/gtt-verint-data-lineage.html</code></li>
+<li><code>POC_Redefined/docs/REPORT_SCHEMA.md</code></li>
+<li><code>POC_Redefined/docs/SERVER_SIDE_ARCHITECTURE.md</code></li>
+</ul>
+<h3>Board code</h3>
+<ul>
+<li><code>RTA_Board_V2/src/domain/kpis.ts</code></li>
+<li><code>RTA_Board_V2/src/domain/exceptions.ts</code></li>
+<li><code>RTA_Board_V2/src/domain/join.ts</code></li>
+<li><code>RTA_Board_V2/src/domain/wording.ts</code></li>
+<li><code>RTA_Board_V2/src/screens/TeamLead.tsx</code></li>
+<li><code>RTA_Board_V2/src/screens/Floor.tsx</code></li>
+<li><code>RTA_Board_V2/src/data/lineage.ts</code></li>
+<li><code>RTA_Board_V2/src/data/bridge.ts</code></li>
+<li><code>RTA_Board_V2/src/data/accounts.ts</code></li>
+</ul>
+<h3>Capture and API code</h3>
+<ul>
+<li><code>POC_Redefined/verint_extension/parse.js</code> (<code>deriveScheduleDetail</code>, <code>extractRoster</code>)</li>
+<li><code>POC_Redefined/verint_extension/background.js</code> (<code>ACCOUNT_ORGS</code>, <code>rebuild</code>, push)</li>
+<li><code>POC_Redefined/verint_extension/inject.js</code> (<code>runFullCapture</code>, <code>makeCensus</code>)</li>
+<li><code>POC_Redefined/local_api.py</code></li>
+<li><code>POC_Redefined/gtt_adapter.py</code></li>
+</ul>
+</div>
+
+<footer>Figures in sections 6 and 8 come from real captures of one account on 2026-10-09 and earlier sessions. Names and IDs in examples are synthetic.</footer>
+</div>
