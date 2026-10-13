@@ -23,7 +23,7 @@ commit it (GTT_JSON/ is gitignored).
 
 Usage:
   ../.venv-browser/bin/python gtt_gate.py \
-      --key "GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json" \
+      --key "GTT_JSON/td-sa-wfm-gtt-reports02_2026-08-12.json" \
       --date 2026-06-03 \
       --functional-area "FA_CIBC" \
       --sites "GT - Guatemala - Pradera East" \
@@ -47,7 +47,7 @@ def mask(v):
 
 def main():
     ap = argparse.ArgumentParser()
-    ap.add_argument("--key", default="GTT_JSON/ti-is-prod-eu-w1-82ce0c6f2e03.json",
+    ap.add_argument("--key", default="GTT_JSON/td-sa-wfm-gtt-reports02_2026-08-12.json",
                     help="path to the SA key (or set GOOGLE_APPLICATION_CREDENTIALS)")
     ap.add_argument("--date", default="2026-06-03", help="single day YYYY-MM-DD")
     ap.add_argument("--functional-area", default="FA_Epic Games")
