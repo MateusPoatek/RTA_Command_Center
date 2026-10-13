@@ -82,7 +82,7 @@ Statuses reflect a read-only audit of existing `.mmd` sources. **EXISTS** = usab
 | D-15 | Rollout Waves (5 tiers) | 4 | 🟢 EXISTS | `diagrams/sources/D-15-rollout-waves.mmd` (folds in `03-integration-rest-readonly` + `04-integration-citrix-vdi`) |
 | D-16 | Hosting Model | 4 | 🟢 EXISTS | `diagrams/sources/D-16-hosting-model.mmd` (seeded from `command-center-infrastructure.mmd`) |
 | D-17 | Observability | 4 | 🟢 EXISTS | `diagrams/sources/D-17-observability.mmd` (folds in `05-connector-failprevention.mmd`) |
-| D-18 | Command Center internal | 4 | 🟢 EXISTS | `diagrams/sources/D-18-command-center-internal.mmd` (component names from real UI source) |
+| D-18 | Command Center internal | 4 | 🟢 EXISTS | `diagrams/sources/D-18-command-center-internal.mmd` (component names from the retired `POC_Redefined/command-center`, git tag `command-center-final`; superseded by `RTA_Board_V2`) |
 | D-19 | Migration Waves | 5 | 🟢 EXISTS | `diagrams/sources/D-19-migration-waves.mmd` (Gold=ground truth; Silver/Bronze illustrative) |
 | D-20 | Future Vision | 5 | 🟢 EXISTS | `diagrams/sources/D-20-future-vision.mmd` |
 | **D-00** | **Platform Poster (A2)** | 0 | 🟢 EXISTS | `diagrams/sources/D-00-platform-poster.mmd` (signature cover; Opus-authored synthesis of D-01…D-20) |
@@ -123,6 +123,7 @@ validated content, each **folds into** a library diagram as detail (reuse, not r
 | Connector catalog | [`../docs/engineering/CONNECTOR_CATALOG.md`](../docs/engineering/CONNECTOR_CATALOG.md) | references (feeds D-04, D-15) |
 | Tenant manifest / control plane | [`../docs/engineering/FDAE_CONFIGURATION_LAYER.md`](../docs/engineering/FDAE_CONFIGURATION_LAYER.md) | references (feeds D-07, D-08) |
 | Existing diagram sources | `../docs/diagrams/`, `../docs/engineering/diagrams/mmd/` | reuses / recasts (see disposition table) |
+| RTA Board + TL Alert System (the running Command Center, `RTA_Board_V2/`) | [`rta-board-engineering-guide.html`](rta-board-engineering-guide.html) | how the built POC works: sources, pipeline, alert rules, KPIs, finance view |
 
 ---
 

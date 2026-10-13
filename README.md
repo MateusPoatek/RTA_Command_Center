@@ -14,16 +14,16 @@
 | ↳ System architecture — the spine, cloud-neutral seams, governance invariant | [SYSTEM_ARCHITECTURE.md](POC_Redefined/docs/engineering/SYSTEM_ARCHITECTURE.md) |
 | ↳ Connector catalog + the **read-only-API vs Citrix/VDI** integration diagrams | [CONNECTOR_CATALOG.md](POC_Redefined/docs/engineering/CONNECTOR_CATALOG.md) |
 | ↳ Per-client configuration (the tenant manifest / control plane) | [FDAE_CONFIGURATION_LAYER.md](POC_Redefined/docs/engineering/FDAE_CONFIGURATION_LAYER.md) |
-| **Run the demo app** | [command-center developer guide](POC_Redefined/command-center/README.md) |
+| **Run the app** | [RTA Board (the Command Center)](RTA_Board_V2/README.md) · [engineering guide](POC_Redefined/Product_and_Architecture_docs/rta-board-engineering-guide.html) |
 
 *(All architecture diagrams are embedded as Mermaid and render inline on GitHub.)*
 
 ## Run the app
 
 ```bash
-cd POC_Redefined/command-center
+cd RTA_Board_V2
 npm install
-npm run dev          # → http://localhost:5173
+npm run dev          # → http://localhost:5174 (needs POC_Redefined/local_api.py on :5050)
 ```
 
 Run the rules-core tests (Python, 44 tests):
@@ -45,7 +45,7 @@ cd POC_Redefined && python -m unittest discover -s tests
 
 This repository is the **active application + production documentation**, scrubbed of client PII:
 
-- **Included** — the React Command Center (`POC_Redefined/command-center`), the Verint browser extension (`POC_Redefined/verint_extension`), the Python rules core + tests (`POC_Redefined/`), and the engineering docs (`POC_Redefined/docs/`).
+- **Included** — the React Command Center (`RTA_Board_V2`), the Verint browser extension (`POC_Redefined/verint_extension`), the Python rules core + tests (`POC_Redefined/`), and the engineering docs (`POC_Redefined/docs/`).
 - **Excluded** (kept internal, never committed) — raw client data, Verint screenshots/recordings, OCR dumps, meeting transcripts, the legacy `POC/` evidence tree, and all secrets. Demo seed data uses **synthetic names** (no real employees).
 
 ## Data honesty

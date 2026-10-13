@@ -1,6 +1,6 @@
 // background.js — MV3 service worker. Accumulates captured Verint payloads,
 // rebuilds CommandCards (parse.js), updates the badge, and pushes cards to an
-// open Command Center tab (localhost:5173). All local; nothing leaves the machine.
+// open Command Center tab (RTA_Board_V2, localhost:5174). All local; nothing leaves the machine.
 //
 // HARDENING (2026-06-11): MV3 evicts the service worker after ~30s idle, which
 // wiped the in-memory state and made the bridge feel "unstable" (popup shows 0,
@@ -143,8 +143,7 @@ function requestFullCapture() {
 }
 
 function pushToCommandCenter() {
-  // 5173 = command-center, 5174 = RTA_Board_V2
-  chrome.tabs.query({ url: ["http://localhost:5173/*", "http://localhost:5174/*"] }, (tabs) => {
+  chrome.tabs.query({ url: ["http://localhost:5174/*"] }, (tabs) => {
     for (const t of tabs) {
       chrome.tabs.sendMessage(
         t.id,

@@ -1,6 +1,6 @@
-// content_cc.js — ISOLATED world on http://localhost:5173/* (the Command Center).
+// content_cc.js — ISOLATED world on http://localhost:5174/* (the Command Center, RTA_Board_V2).
 // Receives cards from the extension background and hands them to the React app
-// via window.postMessage (the app's useExtensionBridge hook listens for these).
+// via window.postMessage (RTA_Board_V2 src/data/bridge.ts listens for these).
 function inject(cards, syncedAt, roster) {
   window.postMessage(
     {

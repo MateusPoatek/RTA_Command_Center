@@ -1,4 +1,4 @@
-/* TELUS Digital palette, values copied from command-center brandConfig.ts (not imported: V2 stays separate).
+/* TELUS Digital palette, same values as src/reports/brandConfig.ts.
    TELUS has no red/amber; problem red is the same one the branded PDF report uses. Light theme only (KISS). */
 :root {
   --bg: #FCFDFB; --panel: #FFFFFF; --panel-2: #F2F3ED; --line: #DEE0D9; --text: #222220; --muted: #595956;

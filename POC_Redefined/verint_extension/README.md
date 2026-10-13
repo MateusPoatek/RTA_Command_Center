@@ -12,10 +12,10 @@ the browser + Verint + the dashboard.
   drawn from). It **never** modifies Verint or sends anything back to it.
 - Parses those into adherence alerts (Verint's own planned-vs-actual verdict).
 - Shows them in the toolbar popup (with a count badge).
-- Pushes them into an open Command Center tab at `http://localhost:5173`.
+- Pushes them into an open Command Center tab at `http://localhost:5174`.
 
 **Privacy/security:** host permissions are limited to `*.verintcloudservices.com`
-and `localhost:5173`. All processing is local; **no data leaves the machine.**
+and `localhost:5174`. All processing is local; **no data leaves the machine.**
 
 ## Install (Chrome/Edge — "Load unpacked")
 
@@ -32,7 +32,7 @@ Command Center tab in the *same* browser session. So the cleanest demo runs all
 three on **one machine**:
 
 - **Verint** (EPIC account, logged in) +
-- **Command Center** at `http://localhost:5173` (running) +
+- **Command Center** at `http://localhost:5174` (running) +
 - **this extension** installed.
 
 Two ways to run the demo:
@@ -41,7 +41,7 @@ Two ways to run the demo:
   log into Verint EPIC, open the Command Center → cards appear live. Dione
   watches / verifies. You drive; it's genuinely live.
 - **B — On Dione's machine:** she installs the extension **and** runs the Command
-  Center locally (`npm run dev` in `command-center`) + logs into Verint → she
+  Center locally (`npm run dev` in `RTA_Board_V2`) + logs into Verint → she
   sees her own live cards; screen-share to you.
 
 **Dione's self-contained proof (no Command Center needed):** even without the
@@ -55,15 +55,15 @@ the capture works on her real Verint session.
 
 ## Demo run (setup A)
 
-1. Start the Command Center: `cd command-center && npm run dev` → `localhost:5173`.
+1. Start the Command Center: `cd ../../RTA_Board_V2 && npm run dev` → `localhost:5174`.
 2. Open Verint, go to the calendar, apply the **EPIC_TISV** filter so employees
    show. The extension badge shows the alert count.
-3. Open `http://localhost:5173` in the same browser → the feed fills with the
-   real EPIC cards. (Or click the extension popup → **Push to Command Center**.)
+3. Open `http://localhost:5174` in the same browser → the board fills with the
+   live EPIC roster. (Or click the extension popup → **Push to Command Center**.)
 
 ## Verify the bridge WITHOUT Verint (do this first)
 
-Open `http://localhost:5173`, open DevTools console, and paste the contents of
+Open `http://localhost:5174`, open DevTools console, and paste the contents of
 **`BRIDGE_TEST.js`** (generated from a real capture — 12 cards). The feed should
 fill immediately. This confirms the Command Center side works before involving
 the extension or Verint.
@@ -72,7 +72,7 @@ the extension or Verint.
 
 - **No cards after capture:** make sure you actually loaded the calendar with a
   filter applied (that's what triggers `calendar-filter`). Re-open the popup.
-- **Command Center didn't update:** confirm it's at `http://localhost:5173`
+- **Command Center didn't update:** confirm it's at `http://localhost:5174`
   (the host permission is exact) and reload the tab.
 - **Badge stuck at 0:** open the Verint calendar fresh; the capture fires on the
   API call, not on a cached view.
