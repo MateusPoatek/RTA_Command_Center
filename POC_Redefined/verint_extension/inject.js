@@ -373,6 +373,96 @@
     }
   }
 
+  // ====================== SKILL LOOKUP (agent languages) ===================
+  // Verint has no read endpoint that returns an employee's skills (probed
+  // 2026-10-14: calendar-filter, work-resources and their includes don't carry
+  // them; skill filters on /api/wfm 500). The only way is the one the UI uses:
+  // a saved employee filter with wfmInfo.skill, evaluated by
+  // work-resource-filter-set. So this scan WRITES to exactly one filter that
+  // the extension owns — SKILL_FILTER — and never to any other (the RTA's
+  // "Last unsaved filter" is only ever READ, as the scope). Sequential, one
+  // request at a time, stops on the first non-2xx. Posts ids + skill names
+  // only (no employee names); background.js turns them into the language map.
+  const SKILL_FILTER = "RTA_Skill_Lookup";
+  const CORE = "/wfo/rest/core-api/empfilter/";
+  const FILTER_SET = "/api/wfm/main/v1/work-resource-filter-set";
+  const skillScan = { running: false };
+
+  function coreHeaders() {
+    const h = lastCalReq.headers || {};
+    const pick = (name) => h[name] || h[name.toLowerCase()];
+    const out = { "Content-Type": "application/json", Accept: "application/json" };
+    for (const k of ["Impact360AuthToken", "X-CSRF-Header", "X-CSRF-Login"]) if (pick(k)) out[k] = pick(k);
+    return out;
+  }
+
+  async function runSkillLookup(pattern) {
+    if (skillScan.running || capture.running || probe.running) return;
+    if (!lastCalReq) {
+      window.postMessage({ __rtaLiveBridge: true, kind: "languages", error: "no captured request yet — page the calendar first" }, window.location.origin);
+      return;
+    }
+    skillScan.running = true;
+    const post = (extra) =>
+      window.postMessage({ __rtaLiveBridge: true, kind: "languages", scannedAt: new Date().toISOString(), ...extra }, window.location.origin);
+    const fail = (where, status) => { post({ error: `${where} → HTTP ${status}` }); };
+    try {
+      const re = new RegExp(pattern || "^TIB EPIC ", "i");
+      const ws = parseBody(lastCalReq.body).criteria.workResourceWorkspaceCriteria || {};
+      const scopeFilter = ws.employeeFilterName || "Last_Unsaved_Filter";
+      const evalFilter = async (filterName) => {
+        const body = { data: { type: "v1/work-resource-filter-set", attributes: {
+          start: ws.startTime, end: ws.endTime, workResourceIds: [],
+          useAllEmployees: true, useAllPoolers: false, useAllPhantoms: false, filterName } } };
+        const r = await _fetch.call(window, FILTER_SET, { method: "POST", credentials: "include", headers: lastCalReq.headers, body: JSON.stringify(body) });
+        if (!r.ok) return { status: r.status };
+        const a = ((await r.json()).data || {}).attributes || {};
+        return { status: r.status, ids: (a.workResourceEntities || []).map((e) => String(e.id)) };
+      };
+      const core = (path, method, body) =>
+        _fetch.call(window, CORE + path + (path.includes("?") ? "&" : "?") + "_dc=" + Date.now(), {
+          method, credentials: "include", headers: coreHeaders(), body: body ? JSON.stringify(body) : undefined });
+
+      // 1. Skill catalogue (names + ids) from the filter metadata.
+      const g = await core("get?filterName=Last_Unsaved_Filter", "GET");
+      if (!g.ok) return fail("empfilter/get", g.status);
+      const skills = (((await g.json()).empFilter || {}).wfmInfo || {}).skillList || [];
+      const wanted = skills.filter((s) => re.test(s.name || ""));
+      if (!wanted.length) return post({ bySkill: [], scopeIds: [], skills: 0 });
+
+      // 2. Scope = the agents in the RTA's own filter (read only).
+      const scope = await evalFilter(scopeFilter);
+      if (!scope.ids) return fail("filter-set(scope)", scope.status);
+
+      // 3. Make sure our own filter exists (create once, never anything else).
+      const n = await core("filterNames?page=1&start=0&limit=100", "GET");
+      if (!n.ok) return fail("empfilter/filterNames", n.status);
+      const exists = ((await n.json()).ArrayList || []).some((f) => f.filterName === SKILL_FILTER || f.id === SKILL_FILTER);
+      if (!exists) {
+        const a = await core("add", "POST", { name: SKILL_FILTER, wfmInfo: { skill: String(wanted[0].id) } });
+        if (!a.ok) return fail("empfilter/add", a.status);
+      }
+
+      // 4. One skill at a time: point our filter at it, evaluate, record ids.
+      const bySkill = [];
+      for (let i = 0; i < wanted.length; i++) {
+        const s = wanted[i];
+        const u = await core("update", "POST", { id: SKILL_FILTER, name: SKILL_FILTER, wfmInfo: { skill: String(s.id) } });
+        if (!u.ok) return fail("empfilter/update", u.status);
+        const ev = await evalFilter(SKILL_FILTER);
+        if (!ev.ids) return fail("filter-set(" + s.name + ")", ev.status);
+        bySkill.push({ name: s.name, ids: ev.ids });
+        window.postMessage({ __rtaLiveBridge: true, kind: "capture-progress", phase: "languages", done: i + 1, total: wanted.length }, window.location.origin);
+        await _sleep(400);
+      }
+      post({ bySkill, scopeIds: scope.ids, skills: wanted.length });
+    } catch (err) {
+      post({ error: String((err && err.message) || err) });
+    } finally {
+      skillScan.running = false;
+    }
+  }
+
   // Background → content_verint → here: trigger a re-fetch ("Sync now" / timer),
   // run the gate probe ("Run gate probe"), or run a full one-pass capture
   // ("Full Capture") from the popup.
@@ -383,6 +473,7 @@
     if (d.kind === "refetch") refetch();
     else if (d.kind === "probe") runProbe();
     else if (d.kind === "full-capture") runFullCapture();
+    else if (d.kind === "skill-lookup") runSkillLookup(d.pattern);
   });
 
   // Let the page know the hook is live (debug only).

@@ -16,6 +16,11 @@ window.addEventListener("message", (e) => {
     try {
       chrome.runtime.sendMessage({ type: "probe-result", rows: d.rows, meta: d.meta });
     } catch (_) {}
+  } else if (d.kind === "languages") {
+    // Skill-lookup result (ids + skill names, no employee names) → background.
+    try {
+      chrome.runtime.sendMessage({ type: "languages", bySkill: d.bySkill, scopeIds: d.scopeIds, skills: d.skills, scannedAt: d.scannedAt, error: d.error });
+    } catch (_) {}
   } else if (d.kind === "capture-progress") {
     // Full Capture progress (census/targeted phase + counters) → background.
     try {
@@ -45,5 +50,7 @@ chrome.runtime.onMessage.addListener((msg) => {
     window.postMessage({ __rtaLiveBridge: true, kind: "probe" }, window.location.origin);
   } else if (msg && msg.type === "full-capture") {
     window.postMessage({ __rtaLiveBridge: true, kind: "full-capture" }, window.location.origin);
+  } else if (msg && msg.type === "skill-lookup") {
+    window.postMessage({ __rtaLiveBridge: true, kind: "skill-lookup", pattern: msg.pattern }, window.location.origin);
   }
 });

@@ -94,9 +94,33 @@ function renderCaptureProgress(p) {
   if (p.phase === "starting") captureStatusEl.textContent = "Starting…";
   else if (p.phase === "census") captureStatusEl.textContent = `Census: page ${p.done}…`;
   else if (p.phase === "targeted") captureStatusEl.textContent = `Targeted: chunk ${p.done}/${p.total}…`;
+  else if (p.phase === "languages") captureStatusEl.textContent = p.done < p.total ? `Languages: skill ${p.done}/${p.total}…` : "";
   else if (p.phase === "done") captureStatusEl.textContent = `✓ Full Capture complete (${p.total} targeted chunk(s)).`;
   else if (p.phase === "aborted") captureStatusEl.textContent = "⚠ Aborted (5xx) — see console.";
 }
+
+// Agent languages (Verint skills) — only shown for accounts that scan them (EPIC_BG).
+const langsEl = document.getElementById("langs");
+const langsTextEl = document.getElementById("langs-text");
+function renderLanguages() {
+  chrome.runtime.sendMessage({ type: "get-languages" }, (s) => {
+    if (chrome.runtime.lastError || !langsEl) return;
+    langsEl.style.display = s && s.supported ? "block" : "none";
+    if (!s || !s.supported) return;
+    const when = s.scannedAt ? new Date(s.scannedAt).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" }) : null;
+    langsTextEl.textContent = s.running
+      ? "Languages: scanning Verint skills…"
+      : s.error
+        ? `Languages: last scan failed (${s.error})`
+        : when ? `Languages: ${s.agents} agents · scanned ${when}` : "Languages: not scanned yet (page Verint)";
+  });
+}
+document.getElementById("langs-refresh")?.addEventListener("click", (e) => {
+  e.preventDefault();
+  chrome.runtime.sendMessage({ type: "run-skill-lookup" }, () => { void chrome.runtime.lastError; renderLanguages(); });
+});
+renderLanguages();
+setInterval(renderLanguages, 2000);
 
 function pollCaptureProgress() {
   chrome.runtime.sendMessage({ type: "get-capture-progress" }, (p) => {

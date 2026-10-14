@@ -295,3 +295,24 @@ test("buildCards emits a violation once even if Verint lists it twice", () => {
   );
   assert.equal(cards.length, 1);
 });
+
+// --- language map from a skill scan (synthetic ids) ------------------------
+test("buildLanguageMap: joins skills alphabetically, keeps only scoped ids", () => {
+  const bySkill = [
+    { name: "TIB EPIC English Chat", ids: [11, 12] },
+    { name: "TIB EPIC English", ids: ["11", 13, 99] },
+    { name: "TIB EPIC German", ids: [] },
+  ];
+  const map = RTAParse.buildLanguageMap(bySkill, ["11", "12", "13"]);
+  assert.deepEqual(map, {
+    "11": "TIB EPIC English, TIB EPIC English Chat",
+    "12": "TIB EPIC English Chat",
+    "13": "TIB EPIC English",
+  });
+  assert.equal(map["99"], undefined); // outside the RTA's filter
+});
+
+test("buildLanguageMap: no scope keeps everyone; empty input is empty", () => {
+  assert.deepEqual(RTAParse.buildLanguageMap([{ name: "A", ids: [1] }]), { "1": "A" });
+  assert.deepEqual(RTAParse.buildLanguageMap([], ["1"]), {});
+});

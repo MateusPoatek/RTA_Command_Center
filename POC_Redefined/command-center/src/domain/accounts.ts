@@ -33,7 +33,7 @@ export interface AccountConfig {
   /** The clock-in/out system this account's site actually uses (or targets, if not yet integrated). Descriptive only — doesn't drive any runtime branching (that's gttAvailable/source); just accurate status for whoever picks up the next connector. */
   clockSystem: "GTT" | "Verint MyTime" | "PST" | "TBD";
   clockSystemStatus: "live" | "negotiating_api_access" | "not_started";
-  /** Feature flag: show each agent's language next to their name in Chat alerts, read from runs/agent_languages_<ACCOUNT>.csv (employee_id,language). Verint keeps language in a custom field (Language_BPO) none of our captures return. */
+  /** Feature flag: show each agent's language next to their name in Chat alerts. Source: the extension's daily Verint skill scan (verint_extension/background.js SKILL_LOOKUP_LOBS), with runs/agent_languages_<ACCOUNT>.csv (employee_id,language) as fallback. Verint's Language_BPO custom field is empty, so skills are used. */
   alertShowAgentLanguage?: boolean;
   /** Feature flag: drop "PLEASE CHECK" from the Chat alert heading and the trailing "Please check." on each row (client request). */
   alertOmitPleaseCheck?: boolean;

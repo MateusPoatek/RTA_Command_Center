@@ -34,6 +34,17 @@ let autoPush = false;             // false = accumulate while paging, push on de
 let activeLob = "EPIC";           // which account's Verint filter is currently being captured (label only)
 let captureProgress = null;       // Full Capture progress: { phase, done, total } — null when idle/never run
 
+// Agent languages (Verint skills) for the Chat alerts. Only accounts listed here
+// get a skill scan; the value is the skill-name pattern that counts as a language.
+const SKILL_LOOKUP_LOBS = { EPIC_BG: "^TIB EPIC " };
+// { [lob]: { map: {workResourceId: "Skill A, Skill B"}, day, scannedAt, skills, error } }
+// Kept in chrome.storage.LOCAL so it survives Chrome restarts: ids + skill names
+// only, no employee names. One scan per account per local day.
+let languages = {};
+const LANG_KEY = "rtaLanguages";
+let skillScanRequested = null;    // { lob, at } — the scan in flight (one at a time)
+const todayStr = () => new Date().toLocaleDateString("en-CA");
+
 // ---- persistence: survive SW eviction without disk PII --------------------
 // chrome.storage.session is in-memory (RAM), cleared on browser close. We store
 // ONLY the small derived state — never the raw calendarFilters/workResources
@@ -73,13 +84,39 @@ function hydrate() {
             chrome.action.setBadgeBackgroundColor({ color: "#c0392b" });
           } catch (_) {}
         }
-        resolve();
+        chrome.storage.local.get(LANG_KEY, (l) => {
+          languages = (l && l[LANG_KEY]) || {};
+          resolve();
+        });
       });
     } catch (_) {
       resolve();
     }
   });
   return _hydrated;
+}
+
+function persistLanguages() {
+  try {
+    chrome.storage.local.set({ [LANG_KEY]: languages }, () => void chrome.runtime.lastError);
+  } catch (_) {}
+}
+
+// Ask ONE Verint tab to scan skills for the active account, if it's opted in and
+// today's scan hasn't happened yet. force=true (popup button) ignores the day.
+function maybeRequestSkillLookup(force) {
+  const pattern = SKILL_LOOKUP_LOBS[activeLob];
+  if (!pattern) return false;
+  const cur = languages[activeLob];
+  if (!force && cur && cur.day === todayStr() && !cur.error) return false;
+  // One scan at a time; a stuck/failed one may be retried after 10 minutes.
+  if (skillScanRequested && Date.now() - skillScanRequested.at < 10 * 60 * 1000) return false;
+  skillScanRequested = { lob: activeLob, at: Date.now() };
+  chrome.tabs.query({ url: "*://*.verintcloudservices.com/*" }, (tabs) => {
+    if (!tabs.length) { skillScanRequested = null; return; }
+    chrome.tabs.sendMessage(tabs[0].id, { type: "skill-lookup", pattern }, () => void chrome.runtime.lastError);
+  });
+  return true;
 }
 hydrate(); // kick off as soon as the worker spins up
 
@@ -147,11 +184,15 @@ function pushToCommandCenter() {
     for (const t of tabs) {
       chrome.tabs.sendMessage(
         t.id,
-        { type: "cards", cards: latestCards, roster: latestRoster, syncedAt: lastSyncedAt },
+        { type: "cards", cards: latestCards, roster: latestRoster, syncedAt: lastSyncedAt, languages: languageMap() },
         () => void chrome.runtime.lastError
       );
     }
   });
+}
+
+function languageMap() {
+  return (languages[activeLob] && languages[activeLob].map) || {};
 }
 
 function rebuild() {
@@ -199,8 +240,36 @@ function handleMessage(msg, sendResponse) {
         if (kind === "cf") captures.calendarFilters.push({ lob: activeLob, data: obj });
         else if (kind === "wr") captures.workResources.push({ lob: activeLob, data: obj });
         rebuild(); // persists
+        // A calendar read means the Verint tab has a fresh authenticated request
+        // to borrow — the moment to run today's skill scan (no-op if done).
+        if (kind === "cf") maybeRequestSkillLookup(false);
       } catch (_) {}
     }
+  } else if (msg.type === "languages") {
+    // inject.js skill scan result (ids + skill names only) → language map.
+    const lob = (skillScanRequested && skillScanRequested.lob) || activeLob;
+    skillScanRequested = null;
+    if (msg.error) {
+      languages[lob] = { ...(languages[lob] || {}), error: msg.error, scannedAt: msg.scannedAt || new Date().toISOString() };
+    } else {
+      const map = self.RTAParse.buildLanguageMap(msg.bySkill || [], msg.scopeIds || null);
+      languages[lob] = { map, day: todayStr(), scannedAt: msg.scannedAt, skills: msg.skills || 0, agents: Object.keys(map).length, error: null };
+    }
+    persistLanguages();
+    if (lob === activeLob && !msg.error) pushToCommandCenter();
+  } else if (msg.type === "run-skill-lookup") {
+    // Popup "Refresh languages": rescan now, even if today's scan exists.
+    skillScanRequested = null;
+    sendResponse({ ok: maybeRequestSkillLookup(true), supported: !!SKILL_LOOKUP_LOBS[activeLob] });
+  } else if (msg.type === "get-languages") {
+    const cur = languages[activeLob] || null;
+    sendResponse({
+      supported: !!SKILL_LOOKUP_LOBS[activeLob],
+      running: !!skillScanRequested,
+      agents: cur ? cur.agents || 0 : 0,
+      scannedAt: cur ? cur.scannedAt || null : null,
+      error: cur ? cur.error || null : null,
+    });
   } else if (msg.type === "get-cards") {
     sendResponse({
       cards: latestCards,
@@ -211,6 +280,7 @@ function handleMessage(msg, sendResponse) {
       lastSyncedAt: lastSyncedAt,
       captureLog: captureLog,
       autoPush: autoPush,
+      languages: languageMap(),
     });
   } else if (msg.type === "push-now") {
     pushToCommandCenter();

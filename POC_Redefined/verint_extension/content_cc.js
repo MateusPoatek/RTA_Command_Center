@@ -1,7 +1,7 @@
 // content_cc.js — ISOLATED world on http://localhost:5173/* (the Command Center).
 // Receives cards from the extension background and hands them to the React app
 // via window.postMessage (the app's useExtensionBridge hook listens for these).
-function inject(cards, syncedAt, roster) {
+function inject(cards, syncedAt, roster, languages) {
   window.postMessage(
     {
       __rtaLiveBridge: true,
@@ -9,6 +9,7 @@ function inject(cards, syncedAt, roster) {
       cards: cards || [],
       roster: roster || [],
       syncedAt: syncedAt || null,
+      languages: languages || {}, // {workResourceId: "TIB EPIC …"} — EPIC_BG only
     },
     window.location.origin
   );
@@ -16,7 +17,7 @@ function inject(cards, syncedAt, roster) {
 
 // Pushed live whenever a new capture arrives.
 chrome.runtime.onMessage.addListener((msg) => {
-  if (msg && msg.type === "cards") inject(msg.cards, msg.syncedAt, msg.roster);
+  if (msg && msg.type === "cards") inject(msg.cards, msg.syncedAt, msg.roster, msg.languages);
 });
 
 // On (re)load of the Command Center tab, pull whatever's already captured.
@@ -25,7 +26,7 @@ chrome.runtime.sendMessage({ type: "get-cards" }, (resp) => {
   // Roster alone counts too: with 0 out-of-adherence agents there are no cards,
   // but the report still needs the roster (verint_rows) to reconcile against GTT.
   if (resp && ((resp.cards && resp.cards.length) || (resp.roster && resp.roster.length))) {
-    inject(resp.cards, resp.lastSyncedAt, resp.roster);
+    inject(resp.cards, resp.lastSyncedAt, resp.roster, resp.languages);
   }
 });
 

@@ -439,7 +439,27 @@
     return rows;
   }
 
-  const api = { buildCards, buildCard, extractRoster, severityFromOoa, fmtDuration, fmtHms, slug, namesFromWorkResources };
+  // Skill scan results → { workResourceId: "Skill A, Skill B" } for the Chat
+  // alert's language tag. bySkill: [{ name, ids }] (ids = members of that skill);
+  // scopeIds: the agents we care about (the RTA's filter) — others are dropped.
+  // Skill names are listed alphabetically so the label is stable across scans.
+  function buildLanguageMap(bySkill, scopeIds) {
+    const scope = scopeIds ? new Set([...scopeIds].map(String)) : null;
+    const per = {};
+    const sorted = [...(bySkill || [])].sort((a, b) => String(a.name).localeCompare(String(b.name)));
+    for (const s of sorted) {
+      for (const raw of s.ids || []) {
+        const id = String(raw);
+        if (scope && !scope.has(id)) continue;
+        (per[id] = per[id] || []).push(s.name);
+      }
+    }
+    const out = {};
+    for (const id of Object.keys(per)) out[id] = per[id].join(", ");
+    return out;
+  }
+
+  const api = { buildCards, buildCard, extractRoster, severityFromOoa, fmtDuration, fmtHms, slug, namesFromWorkResources, buildLanguageMap };
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   root.RTAParse = api;
 })(typeof self !== "undefined" ? self : this);

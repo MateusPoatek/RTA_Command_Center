@@ -27,10 +27,12 @@ interface BridgeMessage {
   cards?: CommandCard[];
   roster?: VerintRosterRow[];
   syncedAt?: string | null;
+  /** {workResourceId: "TIB EPIC …"} from the extension's Verint skill scan (EPIC_BG only). */
+  languages?: Record<string, string>;
 }
 
 export function useExtensionBridge(
-  onCards: (cards: CommandCard[], syncedAt: string | null, roster: VerintRosterRow[]) => void,
+  onCards: (cards: CommandCard[], syncedAt: string | null, roster: VerintRosterRow[], languages: Record<string, string>) => void,
 ): void {
   useEffect(() => {
     function handler(e: MessageEvent) {
@@ -38,7 +40,7 @@ export function useExtensionBridge(
       const d = e.data as BridgeMessage;
       if (!d || d.__rtaLiveBridge !== true || d.kind !== "cards") return;
       if (Array.isArray(d.cards)) {
-        onCards(d.cards, d.syncedAt ?? null, d.roster ?? []);
+        onCards(d.cards, d.syncedAt ?? null, d.roster ?? [], d.languages ?? {});
       }
     }
     window.addEventListener("message", handler);

@@ -487,7 +487,12 @@ function App() {
   useEffect(() => { verintRosterRef.current = verintRoster; }, [verintRoster]);
   // Which surface fills the left panel: the priority feed, or the spatial Floor View.
   const [mainView, setMainView] = useState<"priority-feed" | "floor">("priority-feed");
-  useExtensionBridge((liveCards, syncedAt, roster) => {
+  // Agent languages from the extension's own Verint skill scan, per account
+  // (the extension's capture LOB follows activeAccount via set-lob). Wins over
+  // the CSV in languagesRef, which stays as the fallback.
+  const extLanguagesRef = useRef<Partial<Record<AccountId, Record<string, string>>>>({});
+  useExtensionBridge((liveCards, syncedAt, roster, languages) => {
+    if (Object.keys(languages).length > 0) extLanguagesRef.current[activeAccountRef.current] = languages;
     // Merge instead of blind-replace: a violation already actioned this shift
     // (sent/queued/suppressed/etc.) must not resurrect as "needs-review" just
     // because a recapture still sees it, even under a new raw card id.
@@ -922,7 +927,7 @@ function App() {
       const cfg = ACCOUNT_CATALOG[acct];
       const opts = {
         omitPleaseCheck: cfg?.alertOmitPleaseCheck,
-        languageById: cfg?.alertShowAgentLanguage ? languagesRef.current : undefined,
+        languageById: cfg?.alertShowAgentLanguage ? { ...languagesRef.current, ...extLanguagesRef.current[acct] } : undefined,
         verintBase: cfg?.alertShowVerintLink && cfg.verintUrl ? new URL(cfg.verintUrl).origin : undefined,
       };
       for (let i = 0; i < fresh.length; i += MAX_BATCH_SIZE) {
